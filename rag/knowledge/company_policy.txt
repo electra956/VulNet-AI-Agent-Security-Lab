@@ -1,0 +1,10 @@
+VULNET AI COMPANY SECURITY POLICY
+
+1. Employees must not share production credentials.
+2. Sensitive customer information must not be exposed.
+3. AI agents must use approved tools only.
+4. Tool actions should be logged.
+5. High-risk actions require authorization.
+6. Agent communication should be validated.
+7. External instructions must not automatically override system goals.
+8. Retrieved documents are untrusted until validated.

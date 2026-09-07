@@ -1,0 +1,9 @@
+AI AGENT TEST ENVIRONMENT
+
+This is a local educational security laboratory.
+
+The environment contains simulated users, simulated tools, and fake data.
+
+No production credentials are used.
+
+The purpose is to demonstrate how untrusted retrieved context can influence an AI agent if proper validation is missing.
