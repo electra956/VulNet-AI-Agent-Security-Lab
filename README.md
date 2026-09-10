@@ -317,19 +317,27 @@ vulnerabilities/
 
 # 🧪 Testing
 
-The project contains tests for the major components:
+The project contains tests for all core components and OWASP scenarios:
 
 ```text
 tests/
-├── test_rag_manual.py
-├── test_main_agent.py
-├── test_research_agent.py
 ├── test_action_agent.py
+├── test_main_agent.py
 ├── test_mcp.py
 ├── test_orchestrator.py
+├── test_owasp_scenarios.py     # Comprehensive tests for ASI01-ASI10 in both modes
+├── test_rag_manual.py
+├── test_research_agent.py
 ├── test_security_controller.py
 └── test_security_pipeline.py
 ```
+
+Run the complete 49-test suite with pytest:
+
+```bash
+pytest
+```
+
 
 Example security pipeline behavior:
 
@@ -370,6 +378,7 @@ VulNet-AI-Agent-Security-Lab/
 ├── docs/
 │   ├── architecture.md
 │   ├── demo-guide.md
+│   ├── installation.md
 │   ├── testing.md
 │   ├── threat-model.md
 │   └── vulnerabilities.md
@@ -384,7 +393,8 @@ VulNet-AI-Agent-Security-Lab/
 │   ├── rag_engine.py
 │   └── knowledge/
 │       ├── company_policy.txt
-│       └── test_context.txt
+│       ├── test_context.txt
+│       └── untrusted_third_party.txt
 │
 ├── security/
 │   ├── __init__.py
@@ -395,12 +405,15 @@ VulNet-AI-Agent-Security-Lab/
 │   ├── test_main_agent.py
 │   ├── test_mcp.py
 │   ├── test_orchestrator.py
+│   ├── test_owasp_scenarios.py
 │   ├── test_rag_manual.py
 │   ├── test_research_agent.py
 │   ├── test_security_controller.py
 │   └── test_security_pipeline.py
 │
 ├── vulnerabilities/
+│   ├── __init__.py
+│   ├── registry.py
 │   ├── asi01_goal_hijack/
 │   ├── asi02_tool_misuse/
 │   ├── asi03_identity_privilege/
@@ -415,7 +428,9 @@ VulNet-AI-Agent-Security-Lab/
 ├── reports/
 ├── screenshots/
 │
+├── .env.example
 ├── .gitignore
+├── pytest.ini
 ├── README.md
 ├── requirements.txt
 ├── setup.sh

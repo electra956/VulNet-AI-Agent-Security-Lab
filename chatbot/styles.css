@@ -1,0 +1,346 @@
+/* ============================================================
+   VULNET AI AGENT - CLEAN OPENAI / CHATGPT-STYLE THEME
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg-main: #131416;
+  --bg-sidebar: #0e0f11;
+  --bg-card: #1c1d21;
+  --bg-card-hover: #26272c;
+  --bg-input: #1e1f24;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.18);
+  --accent-cyan: #00E5FF;
+  --accent-green: #10B981;
+  --accent-rose: #EF4444;
+  --text-main: #ECECF1;
+  --text-muted: #9CA3AF;
+  --text-dim: #6B7280;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html, body, [class*="css"] {
+  font-family: var(--font-sans);
+  color: var(--text-main);
+}
+
+/* Fix Streamlit top header overlap */
+header[data-testid="stHeader"] {
+  background: transparent !important;
+  height: 3.5rem !important;
+  z-index: 99 !important;
+}
+
+/* Constrain chat width to allow spacious two-column chat + quick test prompts */
+.stMain .block-container {
+  max-width: 1320px !important;
+  padding-top: 4.5rem !important;
+  padding-bottom: 8rem !important;
+  margin: 0 auto !important;
+}
+
+/* Sidebar styling */
+div[data-testid="stSidebar"] {
+  background-color: var(--bg-sidebar) !important;
+  border-right: 1px solid var(--border-subtle) !important;
+}
+
+div[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+  gap: 0.6rem !important;
+}
+
+/* Top minimal header */
+.chat-top-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0 14px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 20px;
+}
+
+.chat-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 19px;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.chat-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mode-secure {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10B981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.mode-vulnerable {
+  background: rgba(239, 68, 68, 0.12);
+  color: #EF4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* ChatGPT Welcome Screen */
+.chatgpt-welcome {
+  text-align: center;
+  margin-top: 24px;
+  margin-bottom: 30px;
+}
+
+.chatgpt-welcome-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+
+.chatgpt-welcome-subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 540px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* Prompt suggestions buttons */
+div.stButton > button {
+  border-radius: 10px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  background: var(--bg-card) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--border-subtle) !important;
+  transition: all 0.2s ease !important;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  height: auto !important;
+  padding: 12px 14px !important;
+  text-align: left !important;
+  display: block !important;
+}
+
+div.stButton > button:hover {
+  background: var(--bg-card-hover) !important;
+  border-color: var(--border-hover) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Chat Messages */
+div[data-testid="stChatMessage"] {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 10px 0 !important;
+  margin-bottom: 8px !important;
+}
+
+div[data-testid="stChatMessage"]:has(div[data-testid="chatAvatarIcon-user"]) {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-radius: 14px !important;
+  padding: 14px 16px !important;
+}
+
+div[data-testid="stChatMessage"]:has(div[data-testid="chatAvatarIcon-assistant"]) {
+  background: transparent !important;
+  padding: 14px 4px !important;
+}
+
+/* Clean Alert Banner for Blocked Threats */
+.threat-blocked-banner {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  border-left: 4px solid #EF4444;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 10px 0;
+}
+
+.threat-blocked-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #F87171;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.threat-blocked-desc {
+  font-size: 12px;
+  color: #E2E8F0;
+  line-height: 1.5;
+}
+
+/* Fixed Bottom Container & Chat Input (OpenAI style) */
+div[data-testid="stBottom"] {
+  background: linear-gradient(180deg, rgba(19, 20, 22, 0) 0%, rgba(19, 20, 22, 0.95) 30%, #131416 100%) !important;
+  padding-bottom: 24px !important;
+  padding-top: 20px !important;
+}
+
+div[data-testid="stChatInput"] {
+  max-width: 820px !important;
+  margin: 0 auto !important;
+}
+
+div[data-testid="stChatInput"] > div {
+  background-color: #212226 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 26px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  padding: 2px 6px !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+div[data-testid="stChatInput"] > div:focus-within {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5) !important;
+}
+
+div[data-testid="stChatInput"] textarea {
+  color: #FFFFFF !important;
+  font-size: 14px !important;
+}
+
+/* System Metric Simple Cards */
+.metric-card-simple {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: center;
+}
+
+.metric-lbl {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.metric-val {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2D2E33;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4B4C53;
+}
+
+/* ============================================================
+   RIGHT-SIDE FIXED STATIC QUICK TEST PROMPTS PANEL
+   ============================================================ */
+div[data-testid="stColumn"]:has(#quick-prompts-anchor) > div[data-testid="stVerticalBlock"],
+div[data-testid="column"]:has(#quick-prompts-anchor) > div[data-testid="stVerticalBlock"],
+div.stColumn:has(#quick-prompts-anchor) > div.stVerticalBlock {
+  position: fixed !important;
+  top: 4.6rem !important;
+  right: max(1rem, calc((100vw - 1320px) / 2 + 1rem)) !important;
+  width: 310px !important;
+  max-height: calc(100vh - 6rem) !important;
+  overflow-y: auto !important;
+  background: #16171a !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 14px !important;
+  padding: 14px 12px !important;
+  z-index: 85 !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45) !important;
+}
+
+.quick-prompts-header-box {
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quick-prompts-title-bar {
+  font-size: 13px;
+  font-weight: 700;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-prompts-sub-bar {
+  font-size: 10.5px;
+  color: #9CA3AF;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+.quick-cat-label-small {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #818898;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Small icon button chips */
+div[data-testid="stColumn"]:has(#quick-prompts-anchor) button,
+div[data-testid="column"]:has(#quick-prompts-anchor) button,
+div.stColumn:has(#quick-prompts-anchor) button {
+  text-align: center !important;
+  justify-content: center !important;
+  padding: 5px 6px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  border-radius: 7px !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: #ECECF1 !important;
+  transition: all 0.15s ease !important;
+  margin: 0 !important;
+  min-height: 32px !important;
+  height: 32px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+div[data-testid="stColumn"]:has(#quick-prompts-anchor) button:hover,
+div[data-testid="column"]:has(#quick-prompts-anchor) button:hover,
+div.stColumn:has(#quick-prompts-anchor) button:hover {
+  background: rgba(0, 229, 255, 0.12) !important;
+  border-color: rgba(0, 229, 255, 0.4) !important;
+  color: #00E5FF !important;
+  transform: translateY(-1px) !important;
+}
+
+
+

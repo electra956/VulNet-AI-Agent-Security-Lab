@@ -1,131 +1,31 @@
 from agents.orchestrator import AgentOrchestrator
 
 
-# --------------------------------------------------
-# CREATE ORCHESTRATOR
-# --------------------------------------------------
-
-orchestrator = AgentOrchestrator()
-
-
-# --------------------------------------------------
-# TEST REQUEST
-# --------------------------------------------------
-
-user_request = (
-    "What are the rules for AI agent tools?"
-)
+def test_orchestrator_initialization():
+    orch = AgentOrchestrator(mode="secure")
+    assert orch.get_mode() == "secure"
+    orch.set_mode("vulnerable")
+    assert orch.get_mode() == "vulnerable"
 
 
-# --------------------------------------------------
-# RUN COMPLETE PIPELINE
-# --------------------------------------------------
+def test_orchestrator_process_flow():
+    orch = AgentOrchestrator(mode="secure")
+    user_request = "What are the rules for AI agent tools?"
+    result = orch.process(user_request)
 
-result = orchestrator.process(
-    user_request
-)
-
-
-# --------------------------------------------------
-# DISPLAY RESULT
-# --------------------------------------------------
-
-print("\n========== COMPLETE AGENT PIPELINE ==========\n")
-
-
-# --------------------------------------------------
-# USER REQUEST
-# --------------------------------------------------
-
-print("USER REQUEST:")
-
-print(
-    result["user_request"]
-)
+    assert result["pipeline_status"] == "completed"
+    assert result["user_request"] == user_request
+    assert len(result["retrieved_documents"]) > 0
+    assert result["main_agent"]["status"] == "completed"
+    assert result["research_agent"]["status"] == "completed"
+    assert result["action_agent"]["status"] == "completed"
+    assert result["mcp_security_status"]["status"] == "success"
+    assert result["mcp_audit_log"]["status"] == "success"
+    assert "execution_time_ms" in result
+    assert len(result["stages"]) > 0
 
 
-# --------------------------------------------------
-# RAG
-# --------------------------------------------------
-
-print("\n========== RAG ==========")
-
-print(
-    f"Documents retrieved: "
-    f"{len(result['retrieved_documents'])}"
-)
-
-for document in result["retrieved_documents"]:
-
-    print(
-        f"- {document['document']} "
-        f"(Score: {document['score']})"
-    )
-
-
-# --------------------------------------------------
-# MAIN AGENT
-# --------------------------------------------------
-
-print("\n========== MAIN AGENT ==========")
-
-print(
-    result["main_agent"]["decision"]
-)
-
-
-# --------------------------------------------------
-# RESEARCH AGENT
-# --------------------------------------------------
-
-print("\n========== RESEARCH AGENT ==========")
-
-print(
-    result["research_agent"]["summary"]
-)
-
-
-# --------------------------------------------------
-# ACTION AGENT
-# --------------------------------------------------
-
-print("\n========== ACTION AGENT ==========")
-
-print(
-    result["action_agent"]["decision"]
-)
-
-
-# --------------------------------------------------
-# MCP SECURITY STATUS
-# --------------------------------------------------
-
-print("\n========== MCP SECURITY STATUS ==========")
-
-mcp_security = result[
-    "mcp_security_status"
-]
-
-print(mcp_security)
-
-
-# --------------------------------------------------
-# MCP AUDIT LOG
-# --------------------------------------------------
-
-print("\n========== MCP AUDIT LOG ==========")
-
-mcp_audit = result[
-    "mcp_audit_log"
-]
-
-print(mcp_audit)
-
-
-# --------------------------------------------------
-# PIPELINE COMPLETE
-# --------------------------------------------------
-
-print(
-    "\n========== PIPELINE COMPLETED ==========\n"
-)
+if __name__ == "__main__":
+    test_orchestrator_initialization()
+    test_orchestrator_process_flow()
+    print("Orchestrator tests passed successfully!")
