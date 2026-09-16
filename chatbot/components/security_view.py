@@ -6,20 +6,170 @@ and FinTech security controls reference.
 
 import streamlit as st
 from vulnerabilities.registry import list_scenarios, run_scenario_simulation
+from observability.audit import get_audit_logger
+from security.approval_engine import get_approval_engine
 
 
 def render_security_view() -> None:
-    """Renders the OWASP Agentic AI security lab and comparative simulation."""
-    st.markdown("### 🛡️ FinTech AI Agent Security Controls & OWASP Lab")
-    st.caption("Execute controlled simulations comparing unmitigated Vulnerable execution against hardened Secure defenses across OWASP Top 10 for Agentic AI.")
+    """Renders the OWASP Agentic AI security lab, KPI metrics, and approvals."""
+    st.markdown("### 🛡️ FinTech AI Agent Security Dashboard & OWASP Lab")
+    st.caption("Live security posture, automated threat interception metrics, ASI event telemetry, and controlled OWASP simulations.")
 
-    sec_tab1, sec_tab2, sec_tab3 = st.tabs([
+    # Compute real-time metrics strictly from local state (NO fabricated statistics)
+    traces = st.session_state.get("trace", [])
+    total_requests = len(traces)
+    blocked_requests = sum(1 for t in traces if t.get("status") == "blocked" or t.get("decision") == "BLOCK")
+
+    sec_events = st.session_state.orchestrator.security.get_events()
+    total_sec_events = len(sec_events)
+
+    audit_records = get_audit_logger().get_records(limit=500)
+    tool_calls = sum(1 for a in audit_records if a.tool and a.tool != "None")
+    high_risk_actions = sum(1 for a in audit_records if a.risk in ("HIGH", "CRITICAL")) + sum(1 for e in sec_events if e.get("severity") in ("CRITICAL", "BLOCKED"))
+
+    approval_engine = get_approval_engine()
+    pending_approvals = len(approval_engine.list_pending())
+
+    # =========================================================================
+    # 6 MANDATORY KPI METRIC CARDS (STRICTLY ACTUAL LOCAL SYSTEM VALUES)
+    # =========================================================================
+    r1c1, r1c2, r1c3 = st.columns(3)
+    with r1c1:
+        st.markdown(
+            f"""
+            <div class="soc-summary-card">
+                <div class="metric-lbl">📊 Total Requests</div>
+                <div class="metric-val" style="color: #00E5FF;">{total_requests} Requests</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with r1c2:
+        st.markdown(
+            f"""
+            <div class="soc-summary-card">
+                <div class="metric-lbl">🛡️ Blocked Requests</div>
+                <div class="metric-val" style="color: #EF4444;">{blocked_requests} Blocked</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with r1c3:
+        st.markdown(
+            f"""
+            <div class="soc-summary-card">
+                <div class="metric-lbl">🚨 Security Events</div>
+                <div class="metric-val" style="color: #A78BFA;">{total_sec_events} Logged</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    r2c1, r2c2, r2c3 = st.columns(3)
+    with r2c1:
+        st.markdown(
+            f"""
+            <div class="soc-summary-card">
+                <div class="metric-lbl">🔧 Tool Calls</div>
+                <div class="metric-val" style="color: #34D399;">{tool_calls} Executed</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with r2c2:
+        st.markdown(
+            f"""
+            <div class="soc-summary-card">
+                <div class="metric-lbl">⚡ High-Risk Actions</div>
+                <div class="metric-val" style="color: #F59E0B;">{high_risk_actions} Actions</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with r2c3:
+        st.markdown(
+            f"""
+            <div class="soc-summary-card">
+                <div class="metric-lbl">⚖️ Pending Approvals</div>
+                <div class="metric-val" style="color: {'#EF4444' if pending_approvals > 0 else '#10B981'};">{pending_approvals} Pending</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+
+    # Filter real security events for OWASP categories: ASI01, ASI02, ASI03, ASI06, ASI09
+    asi_categories = ["ASI01", "ASI02", "ASI03", "ASI06", "ASI09"]
+    categorized_events: dict = {cat: [] for cat in asi_categories}
+
+    for ev in sec_events:
+        scen = str(ev.get("scenario") or "")
+        typ = str(ev.get("event_type") or "")
+        msg = str(ev.get("message") or "")
+        for cat in asi_categories:
+            if cat in scen or cat in typ or cat in msg or cat in str(ev.get("metadata", {})):
+                categorized_events[cat].append(ev)
+
+    # Sub-tabs within Security Dashboard
+    sec_tab1, sec_tab2, sec_tab3, sec_tab4 = st.tabs([
+        "🚨 Recent Security Events (ASI01-ASI09)",
         "🎯 OWASP Scenarios Lab",
         "⚖️ Human Approvals Queue",
         "ℹ️ System & MCP Tool Registry"
     ])
 
     with sec_tab1:
+        st.markdown("#### 🚨 Recent Real-System Security Events")
+        st.caption("Live events categorized by OWASP Top 10 for Agentic AI. Only real events generated by this system are shown.")
+
+        asi_tabs = st.tabs([
+            f"ASI01 ({len(categorized_events['ASI01'])})",
+            f"ASI02 ({len(categorized_events['ASI02'])})",
+            f"ASI03 ({len(categorized_events['ASI03'])})",
+            f"ASI06 ({len(categorized_events['ASI06'])})",
+            f"ASI09 ({len(categorized_events['ASI09'])})"
+        ])
+
+        titles = {
+            "ASI01": "ASI01 - Agent Goal Hijack / Prompt Injection",
+            "ASI02": "ASI02 - Tool Misuse & Parameter Tampering",
+            "ASI03": "ASI03 - Identity & Privilege Abuse / Cross-Customer Access",
+            "ASI06": "ASI06 - Memory & Context Poisoning",
+            "ASI09": "ASI09 - Overreliance & Financial Policy Violations"
+        }
+
+        for idx, cat in enumerate(asi_categories):
+            with asi_tabs[idx]:
+                st.markdown(f"**{titles[cat]}**")
+                ev_list = categorized_events[cat]
+                if not ev_list:
+                    st.info(f"No {cat} events recorded yet in this local session. Trigger this scenario in the **🎯 OWASP Scenarios Lab** tab or **💬 Chat** to generate real telemetry.")
+                else:
+                    for ev in reversed(ev_list[-15:]):
+                        sev = ev.get("severity", "INFO")
+                        sev_color = "#EF4444" if sev in ("CRITICAL", "BLOCKED") else ("#F59E0B" if sev in ("HIGH", "WARNING") else "#10B981")
+                        ts = ev.get("timestamp", "").replace("T", " ")[:19]
+                        req_id = ev.get("metadata", {}).get("request_id", "")
+                        req_badge = f"<code>[{req_id}]</code> &bull; " if req_id else ""
+
+                        st.markdown(
+                            f"""
+                            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-left: 3px solid {sev_color}; padding: 8px 12px; border-radius: 4px; margin-bottom: 6px;">
+                                <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
+                                    <span style="color: {sev_color}; font-weight: 700;">[{sev}] {ev.get('event_type', 'EVENT')}</span>
+                                    <span style="color: #9CA3AF;">{ts}</span>
+                                </div>
+                                <div style="font-size: 12px; color: #ECECF1;">
+                                    {req_badge}{ev.get('message', '')}
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+
+
+    with sec_tab2:
         scenarios_list = list_scenarios()
         scenario_options = [f"{s['id']} — {s['name']}" for s in scenarios_list]
         selected_option = st.selectbox("Select Security Scenario", scenario_options)
@@ -86,9 +236,9 @@ def render_security_view() -> None:
                     st.json(res_data["secure"].get("telemetry_events", []))
 
     # =========================================================================
-    # TAB 2: HUMAN-IN-THE-LOOP APPROVALS QUEUE
+    # TAB 3: HUMAN-IN-THE-LOOP APPROVALS QUEUE
     # =========================================================================
-    with sec_tab2:
+    with sec_tab3:
         from security.approval_engine import get_approval_engine
         approval_engine = get_approval_engine()
         pending_requests = approval_engine.list_pending()
@@ -157,9 +307,9 @@ def render_security_view() -> None:
                 st.dataframe(hist_data, use_container_width=True)
 
     # =========================================================================
-    # TAB 3: SYSTEM & MCP TOOL REGISTRY
+    # TAB 4: SYSTEM & MCP TOOL REGISTRY
     # =========================================================================
-    with sec_tab3:
+    with sec_tab4:
         st.markdown("#### 🔒 Safety Isolation Boundaries")
         mc1, mc2, mc3, mc4 = st.columns(4)
         metrics = [

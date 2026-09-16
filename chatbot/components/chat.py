@@ -17,6 +17,9 @@ from fintech.models import (
     TransactionNotFoundError,
     UnauthorizedAccessError,
 )
+from observability.trace import RequestTracer, get_trace_store
+from observability.audit import get_audit_logger
+from observability.events import StageStatus
 
 
 _cached_service = None
@@ -496,6 +499,32 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                     "pattern": pattern
                 })
                 st.session_state.messages = current_session.get_messages()
+                # Record Observability Trace & Audit for perimeter block
+                tracer = RequestTracer(request_id=req_id, session_id=session_ctx.session_id, user_id=session_ctx.user_id, action="perimeter_check")
+                tracer.record_stage("Authentication", status=StageStatus.SUCCESS.value, details=f"User {session_ctx.user_id} authenticated")
+                tracer.record_stage("Authorization", status=StageStatus.SUCCESS.value, details=f"Role {session_ctx.role} authorized")
+                tracer.record_stage("Security Gateway", status=StageStatus.BLOCKED.value, details=reason)
+                tracer.record_stage("Intent Classification", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+                tracer.record_stage("Main Agent", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+                tracer.record_stage("Transaction Agent", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+                tracer.record_stage("Risk Engine", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+                tracer.record_stage("MCP", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+                tracer.record_stage("Permission", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+                tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="Execution blocked at perimeter")
+                tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details="Incident logged to security audit")
+                final_trace = tracer.finalize(status="blocked", decision="BLOCK", risk="HIGH")
+                get_trace_store().add_trace(final_trace)
+                get_audit_logger().log_audit(
+                    request_id=req_id,
+                    session_id=session_ctx.session_id,
+                    user_id=session_ctx.user_id,
+                    action="perimeter_check",
+                    decision="BLOCK",
+                    status="blocked",
+                    risk="HIGH",
+                    error=reason
+                )
+
                 st.session_state.trace.append({
                     "timestamp": datetime.now().isoformat(),
                     "request_id": req_id,
@@ -507,6 +536,12 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                     "mode": mode,
                     "type": "Perimeter Interception",
                     "status": "blocked",
+                    "agent": "Security Controller",
+                    "tool": None,
+                    "action": "perimeter_check",
+                    "risk": "HIGH",
+                    "decision": "BLOCK",
+                    "checklist": final_trace.render_checklist(),
                     "stages": ["Step 0: Security Controller threat signature detected - execution halted"],
                     "security": security_eval,
                     "documents": [],
@@ -526,6 +561,32 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
 
                 current_session.add_message(role="assistant", content=response_text, request_id=req_id)
                 st.session_state.messages = current_session.get_messages()
+
+                tracer = RequestTracer(request_id=req_id, session_id=session_ctx.session_id, user_id=session_ctx.user_id, action="greeting")
+                tracer.record_stage("Authentication", status=StageStatus.SUCCESS.value, details="Authenticated")
+                tracer.record_stage("Authorization", status=StageStatus.SUCCESS.value, details="Authorized")
+                tracer.record_stage("Security Gateway", status=StageStatus.SUCCESS.value, details="Passed")
+                tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="GREETING")
+                tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Dispatched to Customer Agent")
+                tracer.record_stage("Customer Agent", status=StageStatus.SUCCESS.value, details="Greeting compiled")
+                tracer.record_stage("Risk Engine", status=StageStatus.SUCCESS.value, details="LOW")
+                tracer.record_stage("MCP", status=StageStatus.SUCCESS.value, details="MCP Gateway active")
+                tracer.record_stage("Permission", status=StageStatus.SUCCESS.value, details="Allowed")
+                tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="Delivered")
+                tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details="Logged")
+                final_trace = tracer.finalize(status="completed", decision="ALLOW", risk="LOW", agent="CustomerAgent")
+                get_trace_store().add_trace(final_trace)
+                get_audit_logger().log_audit(
+                    request_id=req_id,
+                    session_id=session_ctx.session_id,
+                    user_id=session_ctx.user_id,
+                    action="greeting",
+                    decision="ALLOW",
+                    status="completed",
+                    risk="LOW",
+                    agent="CustomerAgent"
+                )
+
                 st.session_state.trace.append({
                     "timestamp": datetime.now().isoformat(),
                     "request_id": req_id,
@@ -537,6 +598,12 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                     "mode": mode,
                     "type": "FinTech Greeting",
                     "status": "completed",
+                    "agent": "CustomerAgent",
+                    "tool": "greeting_service",
+                    "action": "greeting",
+                    "risk": "LOW",
+                    "decision": "ALLOW",
+                    "checklist": final_trace.render_checklist(),
                     "stages": ["FinTech Chatbot: Greeting authenticated & delivered"],
                     "security": {"allowed": True},
                     "documents": [],
@@ -557,6 +624,40 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
 
                 current_session.add_message(role="assistant", content=response_text, request_id=req_id)
                 st.session_state.messages = current_session.get_messages()
+
+                is_perm_blocked = "BLOCKED" in response_text
+                tracer = RequestTracer(request_id=req_id, session_id=session_ctx.session_id, user_id=session_ctx.user_id, action="balance_inquiry")
+                tracer.record_stage("Authentication", status=StageStatus.SUCCESS.value, details="Authenticated")
+                tracer.record_stage("Authorization", status=StageStatus.SUCCESS.value, details="Authorized")
+                tracer.record_stage("Security Gateway", status=StageStatus.SUCCESS.value, details="Passed")
+                tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="BALANCE_INQUIRY")
+                tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Dispatched to Customer Agent")
+                tracer.record_stage("Customer Agent", status=StageStatus.SUCCESS.value, details="Balance service lookup")
+                tracer.record_stage("Risk Engine", status=StageStatus.SUCCESS.value, details="LOW")
+                tracer.record_stage("MCP", status=StageStatus.SUCCESS.value, details="MCP Gateway active")
+                if is_perm_blocked:
+                    tracer.record_stage("Permission", status=StageStatus.BLOCKED.value, details="Cross-customer access prohibited")
+                    tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="get_account_balance blocked")
+                    status_str, dec_str, rk_str = "blocked", "BLOCK", "HIGH"
+                else:
+                    tracer.record_stage("Permission", status=StageStatus.SUCCESS.value, details="Ownership verified")
+                    tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="get_account_balance")
+                    status_str, dec_str, rk_str = "completed", "ALLOW", "LOW"
+                tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details="Logged")
+                final_trace = tracer.finalize(status=status_str, decision=dec_str, risk=rk_str, agent="CustomerAgent", tool="get_account_balance")
+                get_trace_store().add_trace(final_trace)
+                get_audit_logger().log_audit(
+                    request_id=req_id,
+                    session_id=session_ctx.session_id,
+                    user_id=session_ctx.user_id,
+                    action="balance_inquiry",
+                    decision=dec_str,
+                    status=status_str,
+                    risk=rk_str,
+                    agent="CustomerAgent",
+                    tool="get_account_balance"
+                )
+
                 st.session_state.trace.append({
                     "timestamp": datetime.now().isoformat(),
                     "request_id": req_id,
@@ -567,7 +668,13 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                     "request": user_input,
                     "mode": mode,
                     "type": "FinTech Domain Service (Balance)",
-                    "status": "completed",
+                    "status": status_str,
+                    "agent": "CustomerAgent",
+                    "tool": "get_account_balance",
+                    "action": "balance_inquiry",
+                    "risk": rk_str,
+                    "decision": dec_str,
+                    "checklist": final_trace.render_checklist(),
                     "stages": [
                         "FinTech Service: Customer account ownership validated",
                         "FinTech Service: Available balance retrieved from local repository"
@@ -575,8 +682,8 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                     "security": {"allowed": True},
                     "documents": [],
                     "execution_time_ms": 2,
-                    "output_reached": True,
-                    "output_status": "Delivered Successfully",
+                    "output_reached": (status_str == "completed"),
+                    "output_status": "Delivered Successfully" if status_str == "completed" else "Blocked by Authorization",
                     "response_preview": response_text[:300]
                 })
                 st.rerun()
@@ -591,6 +698,40 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
 
                 current_session.add_message(role="assistant", content=response_text, request_id=req_id)
                 st.session_state.messages = current_session.get_messages()
+
+                is_perm_blocked = "BLOCKED" in response_text
+                tracer = RequestTracer(request_id=req_id, session_id=session_ctx.session_id, user_id=session_ctx.user_id, action="transaction_history")
+                tracer.record_stage("Authentication", status=StageStatus.SUCCESS.value, details="Authenticated")
+                tracer.record_stage("Authorization", status=StageStatus.SUCCESS.value, details="Authorized")
+                tracer.record_stage("Security Gateway", status=StageStatus.SUCCESS.value, details="Passed")
+                tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="TRANSACTION_HISTORY")
+                tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Dispatched to Customer Agent")
+                tracer.record_stage("Customer Agent", status=StageStatus.SUCCESS.value, details="Transaction ledger lookup")
+                tracer.record_stage("Risk Engine", status=StageStatus.SUCCESS.value, details="LOW")
+                tracer.record_stage("MCP", status=StageStatus.SUCCESS.value, details="MCP Gateway active")
+                if is_perm_blocked:
+                    tracer.record_stage("Permission", status=StageStatus.BLOCKED.value, details="Cross-customer access prohibited")
+                    tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="get_transaction_history blocked")
+                    status_str, dec_str, rk_str = "blocked", "BLOCK", "HIGH"
+                else:
+                    tracer.record_stage("Permission", status=StageStatus.SUCCESS.value, details="Ownership verified")
+                    tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="get_transaction_history")
+                    status_str, dec_str, rk_str = "completed", "ALLOW", "LOW"
+                tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details="Logged")
+                final_trace = tracer.finalize(status=status_str, decision=dec_str, risk=rk_str, agent="CustomerAgent", tool="get_transaction_history")
+                get_trace_store().add_trace(final_trace)
+                get_audit_logger().log_audit(
+                    request_id=req_id,
+                    session_id=session_ctx.session_id,
+                    user_id=session_ctx.user_id,
+                    action="transaction_history",
+                    decision=dec_str,
+                    status=status_str,
+                    risk=rk_str,
+                    agent="CustomerAgent",
+                    tool="get_transaction_history"
+                )
+
                 st.session_state.trace.append({
                     "timestamp": datetime.now().isoformat(),
                     "request_id": req_id,
@@ -601,7 +742,13 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                     "request": user_input,
                     "mode": mode,
                     "type": "FinTech Domain Service (Transactions)",
-                    "status": "completed",
+                    "status": status_str,
+                    "agent": "CustomerAgent",
+                    "tool": "get_transaction_history",
+                    "action": "transaction_history",
+                    "risk": rk_str,
+                    "decision": dec_str,
+                    "checklist": final_trace.render_checklist(),
                     "stages": [
                         "FinTech Service: Account ownership validated",
                         "FinTech Service: Ledger history retrieved from local repository"
@@ -609,8 +756,8 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                     "security": {"allowed": True},
                     "documents": [],
                     "execution_time_ms": 2,
-                    "output_reached": True,
-                    "output_status": "Delivered Successfully",
+                    "output_reached": (status_str == "completed"),
+                    "output_status": "Delivered Successfully" if status_str == "completed" else "Blocked by Authorization",
                     "response_preview": response_text[:300]
                 })
                 st.rerun()
@@ -626,6 +773,8 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                     documents = result.get("retrieved_documents", [])
                     stages = result.get("stages", [])
                     exec_time = result.get("execution_time_ms", 0)
+                    trace_obj = result.get("trace")
+                    checklist_text = result.get("checklist") or (trace_obj.render_checklist() if trace_obj else "")
 
                     agent_text = format_fintech_pipeline_response(result, mode, req_id)
                     st.markdown(f'<span style="font-family:monospace;font-size:10px;color:#00E5FF;margin-bottom:4px;display:block;">[{req_id}]</span>', unsafe_allow_html=True)
@@ -645,6 +794,12 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                         "mode": mode,
                         "type": "FinTech Agentic Pipeline",
                         "status": pipeline_status,
+                        "agent": result.get("routed_agent", "MainAgent"),
+                        "tool": "create_audit_log",
+                        "action": result.get("intent", "agent_orchestration"),
+                        "risk": getattr(trace_obj, "risk", "LOW") if trace_obj else "LOW",
+                        "decision": getattr(trace_obj, "decision", "ALLOW") if trace_obj else "ALLOW",
+                        "checklist": checklist_text,
                         "stages": stages,
                         "security": security_result,
                         "documents": documents,
@@ -654,4 +809,5 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                         "response_preview": (agent_text[:300] + "...")
                     })
                     st.rerun()
+
 

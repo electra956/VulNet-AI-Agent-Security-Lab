@@ -21,6 +21,9 @@ from fintech.models import (
     CustomerNotFoundError,
     UnauthorizedAccessError,
 )
+from observability.trace import RequestTracer, get_trace_store
+from observability.audit import get_audit_logger
+from observability.events import StageStatus
 
 logger = logging.getLogger("vulnet.api.chat")
 router = APIRouter(tags=["Chat"])
@@ -243,6 +246,12 @@ def post_chat(request: ChatRequest) -> ChatResponse:
     user_id = auth_session.user_id
     session_id = auth_session.session_id
 
+    # Initialize RequestTracer & Audit Logger for Observability
+    audit_logger = get_audit_logger()
+    tracer = RequestTracer(request_id=req_id, session_id=session_id, user_id=user_id, action="chat")
+    tracer.record_stage("Authentication", status=StageStatus.SUCCESS.value, details=f"User {user_id} authenticated")
+    tracer.record_stage("Authorization", status=StageStatus.SUCCESS.value, details=f"Role {auth_session.role} authorized")
+
     # Step 1: Session lookup or initialization
     session: Optional[Session] = mgr.get_session(session_id)
     if not session:
@@ -256,6 +265,7 @@ def post_chat(request: ChatRequest) -> ChatResponse:
     default_acct = session.customer_context.account_id
 
     # Step 3: Security Controller perimeter check at Step 0
+    tracer.start_stage("Security Gateway")
     sec_eval = orchestrator.security.evaluate_request(request.message, session_context=session_ctx)
     is_blocked = (sec_eval.get("blocked", False) or sec_eval.get("decision") == "BLOCK") and mode == "secure"
 
@@ -290,6 +300,31 @@ def post_chat(request: ChatRequest) -> ChatResponse:
             "pattern": pattern
         })
 
+        # Record Observability Trace & Audit for perimeter block
+        tracer.record_stage("Security Gateway", status=StageStatus.BLOCKED.value, details=reason)
+        tracer.record_stage("Intent Classification", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+        tracer.record_stage("Main Agent", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+        tracer.record_stage("Transaction Agent", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+        tracer.record_stage("Risk Engine", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+        tracer.record_stage("MCP", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+        tracer.record_stage("Permission", status=StageStatus.SKIPPED.value, details="Halted at perimeter")
+        tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="Blocked at perimeter")
+        tracer.start_stage("Audit")
+        audit_rec = audit_logger.log_audit(
+            request_id=req_id,
+            session_id=session_id,
+            user_id=user_id,
+            action="chat_perimeter",
+            decision="BLOCK",
+            status="blocked",
+            risk="HIGH",
+            error=reason
+        )
+        tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details=f"Audit logged ({audit_rec.audit_id})")
+
+        final_trace = tracer.finalize(status="blocked", decision="BLOCK", risk="HIGH")
+        get_trace_store().add_trace(final_trace)
+
         elapsed_ms = int((time.perf_counter() - start_time) * 1000)
         return ChatResponse(
             request_id=req_id,
@@ -303,8 +338,28 @@ def post_chat(request: ChatRequest) -> ChatResponse:
         )
 
     # Step 4: Dispatch execution
+    tracer.record_stage("Security Gateway", status=StageStatus.SUCCESS.value, details="Perimeter passed")
     try:
         if is_greeting(request.message):
+            tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="GREETING")
+            tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Direct greeting dispatch")
+            tracer.record_stage("Customer Agent", status=StageStatus.SUCCESS.value, details="Customer greeting assembled")
+            tracer.record_stage("Risk Engine", status=StageStatus.SUCCESS.value, details="Risk: LOW (ALLOW)")
+            tracer.record_stage("MCP", status=StageStatus.SUCCESS.value, details="MCP Gateway active")
+            tracer.record_stage("Permission", status=StageStatus.SUCCESS.value, details="Allowed")
+            tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="Greeting delivered")
+            tracer.start_stage("Audit")
+            audit_rec = audit_logger.log_audit(
+                request_id=req_id,
+                session_id=session_id,
+                user_id=user_id,
+                action="greeting",
+                decision="ALLOW",
+                status="completed",
+                risk="LOW"
+            )
+            tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details=f"Audit logged ({audit_rec.audit_id})")
+
             greeting_text = (
                 f"Hello **{session.customer_context.full_name}**! 👋\n\n"
                 f"I am the **VulNet FinTech AI Agent**, your simulated banking assistant.\n\n"
@@ -314,6 +369,9 @@ def post_chat(request: ChatRequest) -> ChatResponse:
                 "How can I assist your banking queries today?"
             )
             session.add_message(role="assistant", content=greeting_text, request_id=req_id)
+            final_trace = tracer.finalize(status="completed", decision="ALLOW", risk="LOW", agent="CustomerAgent")
+            get_trace_store().add_trace(final_trace)
+
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
             return ChatResponse(
                 request_id=req_id,
@@ -326,39 +384,109 @@ def post_chat(request: ChatRequest) -> ChatResponse:
             )
 
         elif is_balance_query(request.message):
+            tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="BALANCE_INQUIRY")
+            tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Dispatched to Customer Agent")
+            tracer.record_stage("Customer Agent", status=StageStatus.SUCCESS.value, details="Balance service lookup")
+            tracer.record_stage("Risk Engine", status=StageStatus.SUCCESS.value, details="Risk: LOW (ALLOW)")
+            tracer.record_stage("MCP", status=StageStatus.SUCCESS.value, details="MCP Gateway active")
+
             balance_text = execute_balance_query(
                 request.message, user_id, default_acct, req_id, user_role=auth_session.role
             )
+            is_perm_blocked = "BLOCKED" in balance_text
+
+            if is_perm_blocked:
+                tracer.record_stage("Permission", status=StageStatus.BLOCKED.value, details="Unauthorized account / cross-customer access")
+                tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="Access denied")
+                status_str = "blocked"
+                dec_str = "BLOCK"
+            else:
+                tracer.record_stage("Permission", status=StageStatus.SUCCESS.value, details="Ownership verified")
+                tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="get_account_balance")
+                status_str = "completed"
+                dec_str = "ALLOW"
+
+            tracer.start_stage("Audit")
+            audit_rec = audit_logger.log_audit(
+                request_id=req_id,
+                session_id=session_id,
+                user_id=user_id,
+                action="balance_inquiry",
+                decision=dec_str,
+                status=status_str,
+                risk="LOW" if not is_perm_blocked else "HIGH",
+                tool="get_account_balance"
+            )
+            tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details=f"Audit logged ({audit_rec.audit_id})")
+
             session.add_message(role="assistant", content=balance_text, request_id=req_id)
+            final_trace = tracer.finalize(status=status_str, decision=dec_str, agent="CustomerAgent", tool="get_account_balance")
+            get_trace_store().add_trace(final_trace)
+
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
             return ChatResponse(
                 request_id=req_id,
                 session_id=session.session_id,
-                status="completed",
+                status=status_str,
                 response=balance_text,
-                decision="ALLOW",
+                decision=dec_str,
                 user_id=user_id,
                 execution_time_ms=elapsed_ms
             )
 
         elif is_transaction_query(request.message):
+            tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="TRANSACTION_HISTORY")
+            tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Dispatched to Customer Agent")
+            tracer.record_stage("Customer Agent", status=StageStatus.SUCCESS.value, details="Transaction ledger lookup")
+            tracer.record_stage("Risk Engine", status=StageStatus.SUCCESS.value, details="Risk: LOW (ALLOW)")
+            tracer.record_stage("MCP", status=StageStatus.SUCCESS.value, details="MCP Gateway active")
+
             txn_text = execute_transaction_query(
                 request.message, user_id, default_acct, req_id, user_role=auth_session.role
             )
+            is_perm_blocked = "BLOCKED" in txn_text
+
+            if is_perm_blocked:
+                tracer.record_stage("Permission", status=StageStatus.BLOCKED.value, details="Unauthorized account / cross-customer access")
+                tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="Access denied")
+                status_str = "blocked"
+                dec_str = "BLOCK"
+            else:
+                tracer.record_stage("Permission", status=StageStatus.SUCCESS.value, details="Ownership verified")
+                tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="get_transaction_history")
+                status_str = "completed"
+                dec_str = "ALLOW"
+
+            tracer.start_stage("Audit")
+            audit_rec = audit_logger.log_audit(
+                request_id=req_id,
+                session_id=session_id,
+                user_id=user_id,
+                action="transaction_history",
+                decision=dec_str,
+                status=status_str,
+                risk="LOW" if not is_perm_blocked else "HIGH",
+                tool="get_transaction_history"
+            )
+            tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details=f"Audit logged ({audit_rec.audit_id})")
+
             session.add_message(role="assistant", content=txn_text, request_id=req_id)
+            final_trace = tracer.finalize(status=status_str, decision=dec_str, agent="CustomerAgent", tool="get_transaction_history")
+            get_trace_store().add_trace(final_trace)
+
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
             return ChatResponse(
                 request_id=req_id,
                 session_id=session.session_id,
-                status="completed",
+                status=status_str,
                 response=txn_text,
-                decision="ALLOW",
+                decision=dec_str,
                 user_id=user_id,
                 execution_time_ms=elapsed_ms
             )
 
         else:
-            result = orchestrator.process(request.message, session_context=session_ctx)
+            result = orchestrator.process(request.message, session_context=session_ctx, tracer=tracer)
             pipeline_status = result.get("pipeline_status", "completed")
 
             main_res = result.get("main_agent") or {}

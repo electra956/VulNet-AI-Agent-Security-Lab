@@ -17,7 +17,7 @@ pytest
 pytest
 ```
 
-The test runner will execute all **238 automated test cases** across **24 test suites**:
+The test runner will execute all **245 automated test cases** across **25 test suites**:
 1. **Action Agent** (`tests/test_action_agent.py`) — Action execution, approval boundaries, and high-risk action authorization.
 2. **FastAPI API Gateway** (`tests/test_api.py`) — Health, Auth enforcement, Chat endpoints, Account lookups, OWASP Security evaluations, and request correlation.
 3. **Customer Authentication & MFA** (`tests/test_auth.py`) — PBKDF2 hashing, MFA challenge-response, session tokens, logout, unauthenticated chat rejections.
@@ -27,21 +27,22 @@ The test runner will execute all **238 automated test cases** across **24 test s
 7. **Simulated FinTech Tool Ecosystem** (`tests/test_fintech_tools.py`) — 16 tools across ACCOUNT, PAYMENT, CARD, FRAUD, KYC, and SUPPORT categories; object-level ownership (BOLA prevention), high-risk human approval enforcement, and audit telemetry.
 8. **Transaction Risk Engine** (`tests/test_transaction_risk.py`) — Deterministic local risk rules across LOW, MEDIUM, HIGH, and CRITICAL tiers; policy decisions (ALLOW, VALIDATE, REVIEW, BLOCK), granular audit trace telemetry, and agent override rejection.
 9. **Human-in-the-Loop Approval Engine** (`tests/test_approval_engine.py`) — High-risk simulated action approval workflows, expiration/TTL checks, human role enforcement, double-decision immutability, and strict anti-self-approval defenses blocking AI actors.
-10. **Main Agent** (`tests/test_main_agent.py`) — Context handling, goal extraction, and goal-drift detection.
-11. **MCP Server & Safe Tools** (`tests/test_mcp.py`) — Tool listing, role-based access control (RBAC), argument sanitization, audit logging.
-12. **Secure MCP Tool Gateway** (`tests/test_mcp_gateway.py`) — Registered tools, unknown tool rejection, unauthorized tool blocks, argument validation (type check & ASI02 injection detection), high-risk human approval gates, output validation, tool audit telemetry, and arbitrary Python execution prevention.
-13. **Agent Orchestrator** (`tests/test_orchestrator.py`) — Multi-agent pipeline flow from user prompt through research and action.
-14. **FinTech Agent Orchestrator & Specialized Agents** (`tests/test_agent_orchestrator.py`) — Intent classification, task planning, agent routing, structured outputs, financial safety invariants, and invalid request handling.
-15. **FinTech Agent Memory Subsystem** (`tests/test_memory.py`) — Short-term conversation memory, user preferences, session context memory, authorization claim prevention, sensitive data sanitization, and ASI06 memory poisoning defense.
-16. **OWASP Top 10 Scenarios** (`tests/test_owasp_scenarios.py`) — Automated side-by-side verification of ASI01 through ASI10 in Secure vs. Vulnerable modes.
-17. **Quick Prompts Suite** (`tests/test_quick_prompts.py`) — Pre-configured adversarial and benign prompts validation.
-18. **RAG Engine Manual** (`tests/test_rag_manual.py`) — TF-IDF vector retrieval, cosine similarity thresholds, and indirect prompt injection filtering.
-19. **FinTech Knowledge Base & Hardened RAG** (`tests/test_fintech_rag.py`) — Semantic chunking, document metadata (`source`, `document_type`, `trust_level`, `created_at`), trusted vs untrusted content boundaries, indirect prompt injection neutralization, and dynamic synthetic RAG poisoning simulation.
-20. **Research Agent** (`tests/test_research_agent.py`) — Context synthesis and command neutralization under Secure Mode.
-21. **Security Controller** (`tests/test_security_controller.py`) — Signature heuristics, security event telemetry, and mode evaluation.
-22. **Security Gateway** (`tests/test_security_gateway.py`) — Input validation, threat detection, policy enforcement, risk scoring, and structured decision contracts (`ALLOW`/`BLOCK`/`APPROVAL`).
-23. **Security Pipeline Integration** (`tests/test_security_pipeline.py`) — End-to-end integration between Security Controller and agent pipeline.
-24. **Session Context** (`tests/test_session_context.py`) — Request ID tracking, session ID isolation, multi-tenant session segregation, context preservation.
+10. **Observability, Audit & Trace** (`tests/test_observability.py`) — Complete 11-stage pipeline checklist verification, mandatory telemetry fields, strict credential/secret scrubbing, structured JSON logging, and append-only audit persistence.
+11. **Main Agent** (`tests/test_main_agent.py`) — Context handling, goal extraction, and goal-drift detection.
+12. **MCP Server & Safe Tools** (`tests/test_mcp.py`) — Tool listing, role-based access control (RBAC), argument sanitization, audit logging.
+13. **Secure MCP Tool Gateway** (`tests/test_mcp_gateway.py`) — Registered tools, unknown tool rejection, unauthorized tool blocks, argument validation (type check & ASI02 injection detection), high-risk human approval gates, output validation, tool audit telemetry, and arbitrary Python execution prevention.
+14. **Agent Orchestrator** (`tests/test_orchestrator.py`) — Multi-agent pipeline flow from user prompt through research and action.
+15. **FinTech Agent Orchestrator & Specialized Agents** (`tests/test_agent_orchestrator.py`) — Intent classification, task planning, agent routing, structured outputs, financial safety invariants, and invalid request handling.
+16. **FinTech Agent Memory Subsystem** (`tests/test_memory.py`) — Short-term conversation memory, user preferences, session context memory, authorization claim prevention, sensitive data sanitization, and ASI06 memory poisoning defense.
+17. **OWASP Top 10 Scenarios** (`tests/test_owasp_scenarios.py`) — Automated side-by-side verification of ASI01 through ASI10 in Secure vs. Vulnerable modes.
+18. **Quick Prompts Suite** (`tests/test_quick_prompts.py`) — Pre-configured adversarial and benign prompts validation.
+19. **RAG Engine Manual** (`tests/test_rag_manual.py`) — TF-IDF vector retrieval, cosine similarity thresholds, and indirect prompt injection filtering.
+20. **FinTech Knowledge Base & Hardened RAG** (`tests/test_fintech_rag.py`) — Semantic chunking, document metadata (`source`, `document_type`, `trust_level`, `created_at`), trusted vs untrusted content boundaries, indirect prompt injection neutralization, and dynamic synthetic RAG poisoning simulation.
+21. **Research Agent** (`tests/test_research_agent.py`) — Context synthesis and command neutralization under Secure Mode.
+22. **Security Controller** (`tests/test_security_controller.py`) — Signature heuristics, security event telemetry, and mode evaluation.
+23. **Security Gateway** (`tests/test_security_gateway.py`) — Input validation, threat detection, policy enforcement, risk scoring, and structured decision contracts (`ALLOW`/`BLOCK`/`APPROVAL`).
+24. **Security Pipeline Integration** (`tests/test_security_pipeline.py`) — End-to-end integration between Security Controller and agent pipeline.
+25. **Session Context** (`tests/test_session_context.py`) — Request ID tracking, session ID isolation, multi-tenant session segregation, context preservation.
 
 ---
 

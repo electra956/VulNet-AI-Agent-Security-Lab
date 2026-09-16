@@ -512,12 +512,42 @@ The **VulNet AI Agent Security Lab** is an educational and security research pla
                                          Simulated Tool Execution
   ```
 - **Core Modules & Specifications**:
-  - `security/approval_engine.py`: Defines `ApprovalRecord`, `ApprovalDecision` (`PENDING`, `APPROVED`, `REJECTED`, `EXPIRED`), and `ApprovalEngine`.
-  - `chatbot/components/security_view.py`: Adds the interactive **Human Approvals Queue** tab in Streamlit, displaying pending requests and providing one-click `Approve` / `Reject` controls.
+### 3.18 Level 2 Security Audit and Agent Trace Subsystem (`observability/`)
+- **Architecture**: A centralized enterprise observability pipeline tracking every request with end-to-end stage verification, structured JSON logging, and automatic secret redaction:
+  ```text
+  Request Ingress (API / Chatbot)
+         │
+         ▼
+  [ RequestTracer Initialized (request_id, session_id, user_id) ]
+         │
+         ├─► 1. Authentication        [✓]
+         ├─► 2. Authorization         [✓]
+         ├─► 3. Security Gateway      [✓ / BLOCKED]
+         ├─► 4. Intent Classification [✓]
+         ├─► 5. Main Agent            [✓]
+         ├─► 6. Transaction Agent     [✓]
+         ├─► 7. Risk Engine           [✓]
+         ├─► 8. MCP                   [✓]
+         ├─► 9. Permission            [✓ / BLOCKED]
+         ├─► 10. Tool                 [✓ / BLOCKED]
+         └─► 11. Audit                [✓]
+                 │
+                 ▼
+  [ AuditLogger (logs/audit.jsonl) & In-Memory TraceStore ]
+                 │
+                 ▼
+  [ Streamlit Trace Checklist UI & JSON Audit Viewer ]
+  ```
+- **Core Modules & Specifications**:
+  - `observability/events.py`: Standardized stage names (`Authentication`, `Authorization`, `Security Gateway`, `Intent Classification`, `Main Agent`, `Transaction Agent`, `Risk Engine`, `MCP`, `Permission`, `Tool`, `Audit`), `StageStatus` (`✓`, `BLOCKED`, `ERROR`, `SKIPPED`), and `TraceStageRecord`.
+  - `observability/logger.py`: `StructuredJsonFormatter` and `redact_sensitive_data` utility recursively redacting passwords, session tokens, MFA codes, API keys, and credit cards (`[REDACTED]`).
+  - `observability/audit.py`: `AuditRecord` and thread-safe `AuditLogger` writing append-only JSON lines to `logs/audit.jsonl` and indexing recent records in an in-memory buffer.
+  - `observability/trace.py`: `AgentTrace`, `RequestTracer`, and `TraceStore` tracking `request_id`, `session_id`, `user_id`, `agent`, `tool`, `action`, `risk`, `decision`, `timestamp`, `status`, `error`, `latency_ms`, and generating the formatted 11-stage checklist.
+  - `chatbot/components/trace.py`: Streamlit dashboard with KPI cards, 11-stage execution checklists, stage latency breakdowns, and a structured JSON audit feed.
 - **Security & Reliability Invariants**:
-  - **Strict Anti-Self-Approval**: AI agents are fundamentally prohibited from approving transactions. Any attempt by an AI caller (`is_ai_caller=True`, `approver_id="AI_AGENT"`, or agent roles) is blocked and logged as `AI_SELF_APPROVAL_ATTEMPT_BLOCKED`.
-  - **Bounded Time-To-Live (TTL)**: Unapproved requests expire automatically after 15 minutes and cannot be approved post-expiry.
-  - **Dual-Control Audit Trail**: Complete record of requester, approver, decision timestamps, and rejection reasons.
+  - **Complete 11-Stage Pipeline Coverage**: Every request records all 11 standardized checkpoints; any failure halts downstream steps and records preceding stages as completed with `Tool: BLOCKED`.
+  - **Zero Credential / Secret Leakage**: Passwords, session tokens, JWTs, MFA OTPs, private keys, and card numbers are strictly scrubbed prior to trace or audit persistence.
+  - **Append-Only Audit Trail**: Audit events are persisted to disk as single-line JSON (`JSONL`) with unique sequential identifiers (`AUD-000001`).
 
 ---
 
