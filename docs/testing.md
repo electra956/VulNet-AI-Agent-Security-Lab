@@ -17,12 +17,13 @@ pytest
 pytest
 ```
 
-The test runner will execute all **245 automated test cases** across **25 test suites**:
+The test runner will execute all **249 automated test cases** across **26 test suites**:
 1. **Action Agent** (`tests/test_action_agent.py`) — Action execution, approval boundaries, and high-risk action authorization.
 2. **FastAPI API Gateway** (`tests/test_api.py`) — Health, Auth enforcement, Chat endpoints, Account lookups, OWASP Security evaluations, and request correlation.
 3. **Customer Authentication & MFA** (`tests/test_auth.py`) — PBKDF2 hashing, MFA challenge-response, session tokens, logout, unauthenticated chat rejections.
 4. **FinTech RBAC & Authorization** (`tests/test_authorization.py`) — Role normalization, 9 granular permissions, allowed/denied actions, cross-customer account BOLA rejection, and ASI03 regression tests.
-5. **FinTech Chatbot** (`tests/test_fintech_chatbot.py`) — Chat view routing, state persistence, greeting extraction, balance/transaction queries, ASI01 mode toggle.
+5. **ASI01 FinTech Goal Hijack** (`tests/test_asi01_goal_hijack.py`) — Direct prompt injection, override command neutralization, trace flow validation, and safe simulated execution.
+6. **FinTech Chatbot** (`tests/test_fintech_chatbot.py`) — Chat view routing, state persistence, greeting extraction, balance/transaction queries, ASI01 mode toggle.
 6. **Simulated FinTech Domain** (`tests/test_fintech_domain.py`) — Customer & account repositories, ownership invariants, balance retrieval, transaction history.
 7. **Simulated FinTech Tool Ecosystem** (`tests/test_fintech_tools.py`) — 16 tools across ACCOUNT, PAYMENT, CARD, FRAUD, KYC, and SUPPORT categories; object-level ownership (BOLA prevention), high-risk human approval enforcement, and audit telemetry.
 8. **Transaction Risk Engine** (`tests/test_transaction_risk.py`) — Deterministic local risk rules across LOW, MEDIUM, HIGH, and CRITICAL tiers; policy decisions (ALLOW, VALIDATE, REVIEW, BLOCK), granular audit trace telemetry, and agent override rejection.

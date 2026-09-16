@@ -221,25 +221,44 @@ def render_security_view() -> None:
             if res_data["type"] == "single":
                 mode_key = "vulnerable" if "vulnerable" in res_data else "secure"
                 sim_out = res_data[mode_key]
+                st.markdown(f"**Target Attack Input:**")
+                st.code(sim_out.get("attack_input", selected_meta.get("default_input", "")), language="text")
                 st.markdown(f"**Outcome:** {sim_out.get('outcome', '')}")
+
+                chk = sim_out.get("checklist")
+                if chk:
+                    st.markdown("**📋 11-Stage Pipeline Trace Checklist:**")
+                    st.code(chk, language="text")
+
                 with st.expander("🔍 Telemetry & Events", expanded=True):
                     st.json(sim_out.get("telemetry_events", []))
             elif res_data["type"] == "compare":
+                st.markdown(f"**Target Attack Input:**")
+                st.code(res_data["secure"].get("attack_input", ""), language="text")
+
                 c_vuln, c_sec = st.columns(2)
                 with c_vuln:
                     st.markdown("#### 🔴 Vulnerable Mode")
                     st.markdown(res_data["vulnerable"].get("outcome", ""))
-                    st.json(res_data["vulnerable"].get("telemetry_events", []))
+                    chk_v = res_data["vulnerable"].get("checklist")
+                    if chk_v:
+                        st.markdown("**Pipeline Trace:**")
+                        st.code(chk_v, language="text")
+                    with st.expander("🔍 Telemetry Events (Vulnerable)", expanded=False):
+                        st.json(res_data["vulnerable"].get("telemetry_events", []))
                 with c_sec:
                     st.markdown("#### 🟢 Secure Mode")
                     st.markdown(res_data["secure"].get("outcome", ""))
-                    st.json(res_data["secure"].get("telemetry_events", []))
+                    chk_s = res_data["secure"].get("checklist")
+                    if chk_s:
+                        st.markdown("**Pipeline Trace:**")
+                        st.code(chk_s, language="text")
+                    with st.expander("🔍 Telemetry Events (Secure)", expanded=False):
+                        st.json(res_data["secure"].get("telemetry_events", []))
 
     # =========================================================================
     # TAB 3: HUMAN-IN-THE-LOOP APPROVALS QUEUE
-    # =========================================================================
     with sec_tab3:
-        from security.approval_engine import get_approval_engine
         approval_engine = get_approval_engine()
         pending_requests = approval_engine.list_pending()
 

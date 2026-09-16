@@ -49,6 +49,8 @@ class ThreatDetector:
         "you are now",
         "new role:",
         "bypass safety",
+        "bypass security controls",
+        "bypass controls",
         "jailbreak",
         "disregard safety guidelines",
         "new objective:",
