@@ -1,0 +1,17 @@
+VULNET FINTECH TRANSACTION LIMITS & APPROVAL POLICY
+
+1. Daily Transaction Thresholds:
+- Standard Customer Daily Transfer Limit: $5,000.00 USD (or local currency equivalent).
+- Real-time peer-to-peer (P2P) transfers require multi-factor session validation.
+
+2. High-Value Transfer Governance:
+- Transfers of $10,000.00 USD or greater mandate explicit secondary authorization (APPROVAL state).
+- Transactions triggering secondary approval are held in pending status until reviewed by authorized operations personnel.
+
+3. Cross-Border & Foreign Currency Transfers:
+- Currency exchange conversions apply real-time baseline rates without hidden charges.
+- Enhanced AML monitoring applies to foreign outbound transfers.
+
+4. Transaction Irrevocability & Cancellation:
+- Executed ledger postings cannot be unilaterally cancelled by standard customer roles.
+- Fraud analysts and administrative personnel retain cancellation capabilities for unverified or disputed transactions.

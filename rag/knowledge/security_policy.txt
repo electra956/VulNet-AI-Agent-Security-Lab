@@ -1,0 +1,15 @@
+VULNET FINTECH INFORMATION SECURITY & ACCESS POLICY
+
+1. Customer Authentication Standards:
+- Mandatory Multi-Factor Authentication (MFA) on all interactive logins.
+- Salted PBKDF2-HMAC-SHA256 password hashing; zero plaintext credentials permitted.
+- Session timeout enforced after 15 minutes of user inactivity.
+
+2. Access Control & Least Privilege:
+- Role-Based Access Control (RBAC) enforced outside the LLM.
+- AI Agents are strictly prohibited from acting as final authorization authorities for fund movement or data modification.
+
+3. Artificial Intelligence Safety & Boundary Controls:
+- All retrieved context from external or user-supplied sources must be treated strictly as DATA, never executable instructions.
+- Indirect prompt injection attempts within knowledge bases must be quarantined and neutralized.
+- Sensitive customer data (SSN, unmasked account numbers, credential hashes) must not be logged or leaked across session contexts.

@@ -1,6 +1,6 @@
-# 🚀 VulNet AI Agent Security Lab — Installation & Setup
+# 🚀 VulNet FinTech AI Agent Security Lab — Installation & Setup
 
-This guide provides instructions for installing and running the VulNet AI Agent Security Lab on Linux, macOS, WSL, and Windows.
+This guide provides instructions for installing and running the VulNet FinTech AI Agent Security Lab on Linux, macOS, WSL, and Windows.
 
 ---
 
@@ -8,8 +8,8 @@ This guide provides instructions for installing and running the VulNet AI Agent 
 - **Python**: 3.10, 3.11, 3.12, or 3.13
 - **Git**: Installed and available in PATH
 - **Memory**: Minimum 2 GB RAM
-- **Disk Space**: ~500 MB for virtual environment and packages
-- **Network**: Internet connection required only for initial `pip install`
+- **Disk Space**: ~500 MB for virtual environment and dependencies
+- **Network**: Internet connection required only for initial package installation
 
 ---
 
@@ -24,6 +24,14 @@ chmod +x setup.sh
 ./setup.sh
 
 source venv/bin/activate
+```
+
+To run the backend and frontend:
+```bash
+# Terminal 1: Launch FastAPI API Gateway
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 2: Launch Streamlit Web UI
 streamlit run chatbot/app.py
 ```
 
@@ -34,6 +42,14 @@ cd VulNet-AI-Agent-Security-Lab
 
 .\setup_windows.ps1
 .\venv\Scripts\Activate.ps1
+```
+
+To run the backend and frontend:
+```powershell
+# Terminal 1: Launch FastAPI API Gateway
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 2: Launch Streamlit Web UI
 streamlit run chatbot\app.py
 ```
 
@@ -66,14 +82,26 @@ Copy the example environment file if customization is desired:
 cp .env.example .env
 ```
 
-### Step 4: Verify Installation
-Run the test suite to verify that all components are functioning correctly:
+### Step 4: Verify Installation with Test Suite
+Run the full test suite (136 tests across 16 test suites):
 ```bash
 pytest
 ```
 
-### Step 5: Start the Application
+### Step 5: Start the Services
+
+#### 1. Start FastAPI API Gateway (Backend)
+```bash
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+```
+- Interactive OpenAPI Swagger documentation: `http://127.0.0.1:8000/docs`
+- Alternative ReDoc documentation: `http://127.0.0.1:8000/redoc`
+- System Health endpoint: `http://127.0.0.1:8000/health`
+
+#### 2. Start Streamlit Web Interface (Frontend)
 ```bash
 streamlit run chatbot/app.py
 ```
-Open your web browser at `http://localhost:8501`.
+- Access the FinTech AI Agent dashboard at: `http://localhost:8501`
+- If port 8501 is occupied: `streamlit run chatbot/app.py --server.port 8502`
+

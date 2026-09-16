@@ -84,6 +84,7 @@ class SecurityController:
         "disable mfa",
         "mfa enforcement",
         "grant admin",
+        "grant me admin",
         "escalate privilege",
         "sudo",
         "assume role admin",
@@ -122,6 +123,8 @@ class SecurityController:
         self.mode = mode.lower()
         if self.mode not in ["secure", "vulnerable"]:
             raise ValueError("Mode must be 'secure' or 'vulnerable'.")
+        from security.security_gateway import SecurityGateway
+        self.gateway = SecurityGateway(mode=self.mode)
         self.events: List[Dict[str, Any]] = []
         self.log_event(
             event_type="SYSTEM_INIT",
@@ -137,6 +140,8 @@ class SecurityController:
         if mode_clean not in ["secure", "vulnerable"]:
             raise ValueError("Mode must be 'secure' or 'vulnerable'.")
         self.mode = mode_clean
+        if hasattr(self, "gateway"):
+            self.gateway.set_mode(mode_clean)
         self.log_event(
             event_type="MODE_CHANGE",
             message=f"Security mode changed to: {self.mode.upper()}",
@@ -185,131 +190,81 @@ class SecurityController:
         """Clear recorded security events."""
         self.events = []
 
-    def evaluate_request(self, user_request: str) -> Dict[str, Any]:
+    def evaluate_request(self, user_request: str, session_context: Optional[Any] = None) -> Dict[str, Any]:
         """
         Evaluate incoming user request for multi-vector agentic threats (ASI01, ASI02, ASI03, ASI05, ASI06).
-        Supports both Secure Mode (blocking) and Vulnerable Mode (educational simulation).
+        Delegates to the AI Security Gateway while maintaining structured event telemetry.
         """
-        if not user_request or not user_request.strip():
-            self.log_event(
-                event_type="REQUEST_EVALUATION",
-                message="Empty user request received.",
-                severity="WARNING",
-                component="SECURITY_CONTROLLER",
-                decision="BLOCK"
-            )
-            return {
-                "allowed": False,
-                "blocked": True,
-                "reason": "Request is empty.",
-                "scenario": None,
-                "detected_pattern": None
+        decision_dict = self.gateway.evaluate(user_request, session_context=session_context, mode=self.mode)
+        ctx_meta = decision_dict.get("session_context", {})
+
+        if decision_dict["blocked"]:
+            meta = {
+                "detected_pattern": decision_dict.get("detected_pattern"),
+                "mode": self.mode,
+                "category": decision_dict.get("category"),
+                "risk": decision_dict.get("risk"),
             }
-
-        request_lower = user_request.lower()
-        detected_pattern = None
-        scenario = None
-
-        # 1. Direct Goal Hijacking & Prompt Injection (ASI01)
-        for pattern in self.GOAL_HIJACK_PATTERNS:
-            if pattern in request_lower:
-                detected_pattern = pattern
-                scenario = "ASI01 - Agent Goal Hijack"
-                break
-
-        # 2. Tool Misuse & Parameter Injection (ASI02)
-        if not detected_pattern:
-            for pattern in self.TOOL_MISUSE_PATTERNS:
-                if pattern in request_lower:
-                    detected_pattern = pattern
-                    scenario = "ASI02 - Tool Misuse and Exploitation"
-                    break
-
-        # 3. Identity and Privilege Abuse (ASI03)
-        if not detected_pattern:
-            for pattern in self.PRIVILEGE_ESCALATION_PATTERNS:
-                if pattern in request_lower:
-                    detected_pattern = pattern
-                    scenario = "ASI03 - Identity and Privilege Abuse"
-                    break
-
-        # 4. Unexpected Code Execution (ASI05)
-        if not detected_pattern:
-            for pattern in self.CODE_EXECUTION_PATTERNS:
-                if pattern in request_lower:
-                    detected_pattern = pattern
-                    scenario = "ASI05 - Unexpected Code Execution"
-                    break
-
-        # 5. Memory & Context Poisoning (ASI06)
-        if not detected_pattern:
-            for pattern in self.MEMORY_POISONING_PATTERNS:
-                if pattern in request_lower:
-                    detected_pattern = pattern
-                    scenario = "ASI06 - Memory & Context Poisoning"
-                    break
-
-        # Clean request without suspicious patterns
-        if detected_pattern is None:
+            meta.update(ctx_meta)
+            self.log_event(
+                event_type="THREAT_BLOCKED" if decision_dict.get("scenario") else "REQUEST_EVALUATION",
+                message=f"Protection blocked suspicious instruction: '{decision_dict.get('detected_pattern')}'"
+                if decision_dict.get("detected_pattern")
+                else decision_dict.get("reason", "Request blocked."),
+                severity="BLOCKED" if decision_dict.get("scenario") else "WARNING",
+                scenario=decision_dict.get("scenario"),
+                component="SECURITY_CONTROLLER",
+                decision="BLOCK",
+                metadata=meta
+            )
+        elif decision_dict.get("is_simulation"):
+            meta = {
+                "detected_pattern": decision_dict.get("detected_pattern"),
+                "mode": "vulnerable",
+                "simulation": True,
+                "category": decision_dict.get("category"),
+                "risk": decision_dict.get("risk"),
+            }
+            meta.update(ctx_meta)
+            self.log_event(
+                event_type="VULNERABILITY_SIMULATION",
+                message=f"Suspicious instruction detected but allowed in Vulnerable Mode: '{decision_dict.get('detected_pattern')}'",
+                severity="WARNING",
+                scenario=decision_dict.get("scenario"),
+                component="SECURITY_CONTROLLER",
+                decision="ALLOW",
+                metadata=meta
+            )
+        elif decision_dict.get("requires_approval"):
+            meta = {
+                "category": decision_dict.get("category"),
+                "risk": decision_dict.get("risk"),
+            }
+            meta.update(ctx_meta)
+            self.log_event(
+                event_type="APPROVAL_REQUIRED",
+                message=decision_dict.get("reason", "Action requires approval."),
+                severity="MEDIUM",
+                scenario=decision_dict.get("scenario"),
+                component="SECURITY_CONTROLLER",
+                decision="APPROVAL",
+                metadata=meta
+            )
+        else:
+            clean_meta = {"request_preview": (user_request or "")[:80]}
+            clean_meta.update(ctx_meta)
             self.log_event(
                 event_type="REQUEST_EVALUATION",
                 message="Request passed perimeter security validation.",
                 severity="INFO",
                 component="SECURITY_CONTROLLER",
                 decision="ALLOW",
-                metadata={"request_preview": user_request[:80]}
+                metadata=clean_meta
             )
-            return {
-                "allowed": True,
-                "blocked": False,
-                "reason": "No suspicious request pattern detected.",
-                "scenario": None,
-                "detected_pattern": None
-            }
 
-        # Vulnerable Mode: allow through for educational research and observation
-        if self.mode == "vulnerable":
-            self.log_event(
-                event_type="VULNERABILITY_SIMULATION",
-                message=f"Suspicious instruction detected but allowed in Vulnerable Mode: '{detected_pattern}'",
-                severity="WARNING",
-                scenario=scenario,
-                component="SECURITY_CONTROLLER",
-                decision="ALLOW",
-                metadata={
-                    "detected_pattern": detected_pattern,
-                    "mode": "vulnerable",
-                    "simulation": True
-                }
-            )
-            return {
-                "allowed": True,
-                "blocked": False,
-                "reason": "Suspicious instruction allowed for controlled educational simulation.",
-                "scenario": scenario,
-                "detected_pattern": detected_pattern
-            }
+        return decision_dict
 
-        # Secure Mode: block the request before downstream propagation
-        self.log_event(
-            event_type="THREAT_BLOCKED",
-            message=f"Protection blocked suspicious instruction: '{detected_pattern}'",
-            severity="BLOCKED",
-            scenario=scenario,
-            component="SECURITY_CONTROLLER",
-            decision="BLOCK",
-            metadata={
-                "detected_pattern": detected_pattern,
-                "mode": "secure"
-            }
-        )
-        return {
-            "allowed": False,
-            "blocked": True,
-            "reason": f"Potential {scenario} attempt detected.",
-            "scenario": scenario,
-            "detected_pattern": detected_pattern
-        }
+
 
     def evaluate_context(self, context_text: str, source: str = "rag") -> Dict[str, Any]:
         """

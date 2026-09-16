@@ -1,0 +1,16 @@
+VULNET FINTECH FRAUD DETECTION & DISPUTE RESOLUTION POLICY
+
+1. Automated Anomaly Triggers:
+Transactions are automatically flagged for suspicious activity review under the following conditions:
+- Velocity Anomaly: More than 3 rapid consecutive transfers within a 60-second window.
+- Geographic Impossibility: Multiple transactions originating from divergent geographical IP regions within 1 hour.
+- Off-Hour High-Value Transactions: Uncharacteristic large transfers executed between 01:00 AM and 05:00 AM.
+
+2. Card & Account Security Measures:
+- Three consecutive failed PIN or MFA verification attempts trigger an automatic temporary card freeze.
+- Customers receive real-time notifications via secure dashboard messaging when an account flag occurs.
+
+3. Dispute Filing & Provisional Credits:
+- Customers may dispute flagged unauthorized transactions within 60 days of the statement date.
+- Tier 2 Fraud Analysts review evidence and issue formal determinations within 10 business days.
+- Provisional credits may be issued pending formal investigation.

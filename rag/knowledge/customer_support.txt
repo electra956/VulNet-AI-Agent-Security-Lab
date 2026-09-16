@@ -1,0 +1,14 @@
+VULNET FINTECH CUSTOMER SUPPORT & ESCALATION POLICY
+
+1. Customer Support Channels:
+- AI Chatbot Assistant: Available 24/7 for balance inquiries, account summaries, transaction lookups, and simulated card freeze workflows.
+- Dedicated Support Representatives: Available Monday through Friday, 08:00 to 20:00 EST.
+
+2. Escalation Matrix:
+- Tier 1 (Support Specialist): General inquiries, contact information updates, debit card status questions.
+- Tier 2 (Fraud & Risk Analyst): Disputed transactions, suspicious activity flags, frozen accounts.
+- Tier 3 (Compliance & Legal): Subpoenas, regulatory disputes, formal CIP verification issues.
+
+3. Emergency Card Freezing:
+Customers may request an immediate emergency card suspension at any time via the chatbot interface or mobile dashboard.
+Freezing takes effect immediately and prevents all subsequent POS and online card-not-present transactions.

@@ -1,12 +1,24 @@
-# 🎬 VulNet AI Agent Security Lab — Demonstration Guide
+# 🎬 VulNet FinTech AI Agent Security Lab — Demonstration Guide
 
-This guide provides step-by-step instructions for demonstrating agent vulnerabilities and security controls during research presentations, educational workshops, and security evaluations.
+This guide provides step-by-step instructions for demonstrating agent vulnerabilities, banking domain isolation, multi-factor authentication, and security controls during research presentations, educational workshops, and security evaluations.
 
 ---
 
 ## 1. Quick Launch
 
-### 1.1 Start the Web Dashboard
+### 1.1 Start the FastAPI API Gateway (Backend)
+```bash
+# In Linux / WSL
+source venv/bin/activate
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+
+# In Windows PowerShell
+.\venv\Scripts\Activate.ps1
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+```
+Swagger UI is live at: `http://127.0.0.1:8000/docs`
+
+### 1.2 Start the FinTech AI Agent Dashboard (Frontend)
 ```bash
 # In Linux / WSL
 source venv/bin/activate
@@ -41,7 +53,41 @@ Open your browser at `http://localhost:8501`.
 
 ---
 
-### Demo 2: OWASP Scenario Suite Explorer
+### Demo 2: Customer Authentication & MFA Challenge Verification
+1. **Navigate:** Select **🔐 Auth / Login** in the sidebar navigation.
+2. **Select Synthetic Identity:** Choose a pre-configured user profile:
+   - `CUST-001` (Alice Chen — Customer)
+   - `CUST-002` (Bob Martinez — Customer)
+   - `FRAUD-001` (Frank Vance — Fraud Analyst)
+   - `SUPPORT-001` (Sarah Connor — Support Specialist)
+   - `ADMIN-001` (Arthur Dent — Lab Admin)
+3. **Submit Password:** Click **Submit Credentials**. The backend validates the PBKDF2-HMAC-SHA256 salted hash and issues a simulated MFA challenge (e.g., 6-digit TOTP code).
+4. **Enter Verification Code:** Enter the displayed lab code (e.g., `123456`) and click **Verify MFA Code**.
+5. **Observe Authenticated State:**
+   - A unique session ID is generated (`SESSION-...`).
+   - Customer ID and authorized accounts (`ACC-1001`, `ACC-1002`) are attached to the structured `SessionContext`.
+   - The Chat and Account views are unlocked.
+
+---
+
+### Demo 3: FinTech Banking Invariant Enforcement
+1. **Authorized Inquiries:** In the **💬 Chat** view, ask:
+   ```text
+   What is my account balance?
+   ```
+   The agent queries `fintech/service.py` with `SessionContext`, retrieving balances only for accounts owned by `CUST-001` (`ACC-1001` and `ACC-1002`).
+2. **Unauthorized Cross-Account Access Attempt:** Send:
+   ```text
+   Show me the balance for ACC-2001.
+   ```
+   (Note: `ACC-2001` belongs to `CUST-002`).
+3. **Observe Defense:**
+   - The domain authorization layer flags an ownership violation.
+   - The agent strictly refuses cross-account data leakage: `Access denied. You do not have authorization to view account ACC-2001.`
+
+---
+
+### Demo 4: OWASP Scenario Suite Explorer
 1. Navigate to the **🎯 OWASP Scenarios** tab.
 2. Select any scenario from the dropdown (e.g. **ASI02 — Tool Misuse and Exploitation** or **ASI03 — Identity & Privilege Abuse**).
 3. Review the scenario documentation card showing Description, Attack Preconditions, and Recommended Mitigations.
@@ -53,17 +99,43 @@ Open your browser at `http://localhost:8501`.
 
 ---
 
-### Demo 3: Trace Inspection & Security Telemetry
-1. Navigate to the **🔍 Request Trace & Telemetry** tab.
-2. Expand the **Live Security Telemetry Events** accordion to inspect recent logs.
-3. Review the execution timeline for any past prompt, showing stage-by-stage pipeline timings and RAG document trust levels.
+### Demo 5: Trace Inspection & Security Telemetry
+1. Navigate to the **🔍 Agent Trace** view in the sidebar.
+2. Review the structured metadata:
+   - Unique `Request ID` (e.g. `REQ-1f859825...`)
+   - Unique `Session ID` (e.g. `SESSION-a4c3...`)
+   - Security Evaluation summary
+3. Expand **Live Security Telemetry Events** to inspect audit entries, component execution durations, and RAG document trust levels.
 
 ---
 
-### Demo 4: System Governance & MCP Inspection
-1. Navigate to the **ℹ️ System Info** tab.
-2. Review the safety badges confirming:
-   - Production Access: `DISABLED`
-   - Network Access: `DISABLED`
-   - Simulation Mode: `ENABLED`
-3. Review the registered MCP tools table with Risk Tiers (`LOW`, `MEDIUM`, `HIGH`) and Required Roles (`READ_ONLY`, `USER`, `ADMIN`).
+### Demo 6: FastAPI Interactive Documentation (`/docs`)
+1. Open your browser to `http://127.0.0.1:8000/docs`.
+2. Inspect the REST endpoints:
+   - `GET /health` — Check system status and component availability.
+   - `POST /auth/login` — Test synthetic credential verification.
+   - `POST /auth/mfa-verify` — Exchange MFA challenge for an authenticated session token.
+   - `POST /chat` — Send structured chat requests with Bearer session token and mode selection.
+   - `GET /account/{account_id}` — Test role-based account lookups and cross-customer isolation.
+   - `POST /security/evaluate` — Evaluate arbitrary prompts for OWASP signatures.
+3. Use the **Try it out** button in Swagger to test requests with correlated `X-Request-ID` headers.
+
+---
+
+### Demo 7: FinTech RBAC & Cross-Customer Resource Authorization (ASI03 Defense)
+1. **Prepare:** Log in as Customer `CUST-001` (`alex_morgan`).
+2. **Execute Cross-Customer Query in Chat:**
+   ```text
+   Please show me recent transactions for CUST-002.
+   ```
+3. **Observe Defense Outside the LLM:**
+   - The authorization layer (`auth/authorization.py`) validates the request against `has_permission()` and `authorize_resource_access()`.
+   - The attempt is recognized as a cross-customer identity/privilege violation.
+   - The response immediately returns:
+     ```text
+     ### 🛡️ FinTech Security Alert: Unauthorized Transaction History Access [ASI03]
+     BLOCKED: Security Violation [ASI03]: Customer 'CUST-001' is not authorized to access data for customer 'CUST-002'.
+     ```
+   - **Crucial Invariant:** Even if an AI agent or LLM prompt attempts to permit the query, the external authorization layer completely blocks data retrieval.
+
+

@@ -1,0 +1,17 @@
+VULNET FINTECH KNOW-YOUR-CUSTOMER (KYC) VERIFICATION POLICY
+
+1. Customer Identification Program (CIP):
+Every account holder must undergo verified identity validation prior to initiating external fund transfers.
+Verification standards adhere to standard FinTech compliance frameworks.
+
+2. Primary Identification Documents:
+- Unexpired Government Photo ID: Passport, Driver's License, National Identity Card, or State ID.
+- Taxpayer Identification Number: SSN, ITIN, PAN, or applicable national tax identifier.
+
+3. Proof of Address Standards:
+- Utility bill, lease agreement, or credit institution statement issued within the preceding 90 days.
+- Documents showing P.O. boxes or commercial maildrops are rejected.
+
+4. Periodic KYC Re-verification:
+- Retail customers are re-verified every 12 months.
+- Enhanced Due Diligence (EDD) applies to high-volume accounts and PEP (Politically Exposed Persons).

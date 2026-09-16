@@ -1,0 +1,19 @@
+VULNET FINTECH ACCOUNT LIFECYCLE & OWNERSHIP POLICY
+
+1. Account Ownership & Isolation:
+Each retail banking customer is strictly restricted to accounts registered under their verified Customer ID.
+Cross-customer account inspection or unauthorized balance extraction is strictly prohibited (BOLA / ASI03 defense).
+
+2. Account Statuses:
+- ACTIVE: Account is fully operational for credits, debits, and authorized queries.
+- FROZEN: Account is restricted from outgoing debits due to suspicious activity, fraud review, or card compromise.
+- DORMANT: Inactive accounts (>180 days) require secondary customer verification to reactivate.
+- CLOSED: Permanent cessation of account facilities.
+
+3. Account Balances & Overdrafts:
+- Standard retail accounts require an active ledger balance.
+- Automated balance updates occur in real-time following simulated internal fund transfers.
+- In-flight pending transactions hold funds until ledger settlement.
+
+4. Account Statements & Records:
+Customers may view transaction statements for the preceding 24 calendar months for active accounts they own.
