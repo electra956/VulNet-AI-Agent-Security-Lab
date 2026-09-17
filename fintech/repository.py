@@ -162,6 +162,18 @@ class FintechRepository:
             if t.source_account == account_id or t.destination_account == account_id
         ]
 
+    def save_transaction(self, transaction: Transaction) -> Transaction:
+        """Store or update a simulated transaction entity."""
+        self.transactions[transaction.transaction_id] = transaction
+        return transaction
+
+    def update_account_balance(self, account_id: str, new_balance: float) -> Optional[Account]:
+        """Update account balance in-place deterministically."""
+        acc = self.accounts.get(account_id)
+        if acc:
+            acc.balance = round(float(new_balance), 2)
+        return acc
+
     def reset(self) -> None:
         """Reset repository to initial deterministic seed state."""
         self.customers = get_default_customers()

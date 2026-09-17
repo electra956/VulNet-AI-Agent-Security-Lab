@@ -9,14 +9,18 @@ It does NOT rely on AI agent prompts, orchestrator rules, or user goodwill.
 """
 
 from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
 from fintech.models import (
     Customer,
     Account,
     Transaction,
+    TransactionStatus,
     CustomerNotFoundError,
     AccountNotFoundError,
     TransactionNotFoundError,
     UnauthorizedAccessError,
+    TransactionValidationError,
+    InvalidStateTransitionError,
 )
 from fintech.repository import FintechRepository
 
@@ -116,3 +120,123 @@ class FintechService:
         """List all accounts owned by a validated customer."""
         self.get_customer(customer_id)
         return self.repository.list_accounts_for_customer(customer_id)
+
+    def create_transaction_record(
+        self,
+        request_id: str,
+        session_id: str,
+        user_id: str,
+        source_account_id: str,
+        destination_account_id: str,
+        amount: float,
+        currency: str = "USD",
+        transaction_type: str = "TRANSFER",
+        status: str = TransactionStatus.PENDING.value,
+        risk_level: str = "LOW",
+        approval_status: str = "NONE",
+        reason: str = "",
+        description: str = "",
+    ) -> Transaction:
+        """Create and register a new deterministic simulated transaction."""
+        txn_id = f"TXN-SIM-{datetime.now().strftime('%Y%m%d%H%M%S%f')[:17]}"
+        txn = Transaction(
+            transaction_id=txn_id,
+            request_id=request_id,
+            session_id=session_id,
+            user_id=user_id,
+            source_account_id=source_account_id,
+            destination_account_id=destination_account_id,
+            amount=amount,
+            currency=currency,
+            transaction_type=transaction_type,
+            status=status,
+            risk_level=risk_level,
+            approval_status=approval_status,
+            reason=reason,
+            description=description or f"Simulated {transaction_type} of {currency} {amount:,.2f}"
+        )
+        return self.repository.save_transaction(txn)
+
+    def execute_transfer(
+        self,
+        customer_id: str,
+        from_account_id: str,
+        to_account_id: str,
+        amount: float,
+        request_id: str = "",
+        session_id: str = "",
+        currency: str = "USD",
+        description: str = "Simulated Transfer",
+    ) -> Transaction:
+        """
+        Execute simulated fund transfer between accounts.
+        Enforces:
+        1. Customer must exist.
+        2. Customer must own from_account_id.
+        3. from_account_id != to_account_id.
+        4. amount > 0.
+        5. Available balance >= amount.
+        6. Updates balances and records COMPLETED transaction.
+        """
+        # Validate ownership outside LLM
+        src_account = self.get_account(customer_id, from_account_id)
+
+        if from_account_id == to_account_id:
+            raise TransactionValidationError(
+                f"Destination account '{to_account_id}' cannot be identical to source account."
+            )
+
+        if amount <= 0:
+            raise TransactionValidationError(
+                f"Transfer amount must be positive, got {amount}."
+            )
+
+        if src_account.balance < amount:
+            raise TransactionValidationError(
+                f"Insufficient funds: account '{from_account_id}' balance (${src_account.balance:,.2f}) "
+                f"is less than requested amount (${amount:,.2f})."
+            )
+
+        # Atomic simulated balance update
+        new_src_balance = round(src_account.balance - amount, 2)
+        self.repository.update_account_balance(from_account_id, new_src_balance)
+
+        # Credit destination if internal
+        dest_account = self.repository.get_account(to_account_id)
+        if dest_account:
+            new_dest_balance = round(dest_account.balance + amount, 2)
+            self.repository.update_account_balance(to_account_id, new_dest_balance)
+
+        # Create completed transaction entity
+        txn_id = f"TXN-SIM-{datetime.now().strftime('%Y%m%d%H%M%S%f')[:17]}"
+        txn = Transaction(
+            transaction_id=txn_id,
+            request_id=request_id,
+            session_id=session_id,
+            user_id=customer_id,
+            source_account_id=from_account_id,
+            destination_account_id=to_account_id,
+            amount=amount,
+            currency=currency,
+            transaction_type="TRANSFER",
+            status=TransactionStatus.COMPLETED.value,
+            risk_level="LOW",
+            approval_status="NONE",
+            reason="Standard simulated transfer executed successfully.",
+            description=description,
+        )
+        return self.repository.save_transaction(txn)
+
+    def transition_transaction(
+        self,
+        transaction_id: str,
+        new_status: str,
+        reason: str = ""
+    ) -> Transaction:
+        """Explicitly transition an existing transaction's state."""
+        txn = self.repository.get_transaction(transaction_id)
+        if not txn:
+            raise TransactionNotFoundError(f"Transaction '{transaction_id}' not found.")
+        txn.transition_to(new_status, reason=reason)
+        return self.repository.save_transaction(txn)
+

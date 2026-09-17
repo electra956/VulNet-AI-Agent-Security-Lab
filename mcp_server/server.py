@@ -218,6 +218,10 @@ class MCPServer:
         if hasattr(caller_role, "user_id") and "customer_id" not in kwargs:
             kwargs["customer_id"] = getattr(caller_role, "user_id")
 
+        if tool_name == "create_simulated_transaction":
+            kwargs.setdefault("user_authorized", user_authorized)
+            kwargs.setdefault("caller_role", caller_role)
+
         # ==========================================
         # STAGE 4: ARGUMENT VALIDATION (ASI02)
         # ==========================================

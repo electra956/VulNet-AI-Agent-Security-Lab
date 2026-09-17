@@ -94,24 +94,28 @@ class PolicyEngine:
             acct_matches = re.findall(r"\b(ACC-\d{4})\b", text, re.IGNORECASE)
             for target_acct in acct_matches:
                 if user_accounts and target_acct.upper() not in [a.upper() for a in user_accounts]:
-                    violations.append(PolicyViolation(
-                        policy="CROSS_ACCOUNT_ISOLATION",
-                        category="ASI03",
-                        severity="HIGH",
-                        reason=(
-                            f"Policy Violation: Customer '{user_id}' requested access to unowned "
-                            f"account '{target_acct.upper()}'."
-                        ),
-                        requires_approval=False
-                    ))
-                    break
+                    # Allow unowned account if it is explicitly the destination/payee of a transfer
+                    is_payee = bool(re.search(rf"\b(?:to|into|towards)\s+{re.escape(target_acct)}\b", text, re.IGNORECASE))
+                    if not is_payee:
+                        violations.append(PolicyViolation(
+                            policy="CROSS_ACCOUNT_ISOLATION",
+                            category="ASI03",
+                            severity="HIGH",
+                            reason=(
+                                f"Policy Violation: Customer '{user_id}' requested access to unowned "
+                                f"account '{target_acct.upper()}'."
+                            ),
+                            requires_approval=False
+                        ))
+                        break
+
 
         # -------------------------------------------------------------------
         # Policy 2: High-Value Financial Transfer Gate (Requires Approval)
         # -------------------------------------------------------------------
-        amount_match = re.search(r"\$(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", text)
+        amount_match = re.search(r"(?:\$|₹|rs\.?\s*|inr\s*)(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", text, re.IGNORECASE)
         if not amount_match:
-            amount_match = re.search(r"\b(?:transfer|send|wire|pay)\s+(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b", text, re.IGNORECASE)
+            amount_match = re.search(r"\b(?:transfer|send|wire|pay)\s+(?:\$|₹|rs\.?\s*|inr\s*)?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b", text, re.IGNORECASE)
 
         if amount_match:
             amount_str = amount_match.group(1).replace(",", "")

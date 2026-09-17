@@ -50,8 +50,8 @@ class TransactionRules:
                 rule_id="RULE-AMT-002",
                 name="CRITICAL_AMOUNT_THRESHOLD",
                 triggered=True,
-                score_impact=85,
-                reason=f"Extreme transaction amount (${amount:,.2f}) exceeds critical threshold of $50,000.",
+                score_impact=75,
+                reason=f"Large transaction amount (${amount:,.2f}) exceeds mandatory approval threshold of $50,000.",
                 metadata={"amount": amount, "threshold": 50000.0}
             )
         elif amount >= 10000.0:

@@ -186,22 +186,42 @@ class TransactionAgent(BaseFinTechAgent):
         intent = plan.get("intent", "PAYMENT_REQUEST")
         user_id = (session_context or {}).get("user_id", "CUST-001")
         accounts = (session_context or {}).get("account_ids", ["ACC-1001"])
-        source_account = accounts[0] if accounts else "ACC-1001"
 
-        # Parse amount and currency if present
-        amount_match = re.search(r"(\$|₹|USD|INR|EUR)?\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{2})?)", request)
+        # Parse amount and currency
+        amount_match = re.search(r"(\$|₹|USD|INR|EUR|rs\.?)?\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{2})?)", request, re.IGNORECASE)
         currency = "$"
         amount_str = "0.00"
         amount_val = 0.0
 
         if amount_match:
-            curr_symbol = amount_match.group(1) or "$"
-            currency = "₹" if "₹" in curr_symbol or "inr" in request.lower() else "$"
+            curr_symbol = (amount_match.group(1) or "$").lower()
+            currency = "₹" if "₹" in curr_symbol or "inr" in request.lower() or "rs" in curr_symbol else "$"
             amount_str = amount_match.group(2).replace(",", "")
             try:
                 amount_val = float(amount_str)
             except ValueError:
                 amount_val = 0.0
+
+        # Parse accounts
+        acct_from_match = re.search(r"from\s+(ACC-\d{4})", request, re.IGNORECASE)
+        acct_to_match = re.search(r"to\s+(ACC-\d{4})", request, re.IGNORECASE)
+        all_accts = re.findall(r"\b(ACC-\d{4})\b", request, re.IGNORECASE)
+
+        source_account = accounts[0] if accounts else "ACC-1001"
+        destination_account = "ACC-2001" if source_account != "ACC-2001" else "ACC-1002"
+
+        if acct_from_match:
+            source_account = acct_from_match.group(1).upper()
+        elif len(all_accts) >= 1 and not acct_to_match:
+            source_account = all_accts[0].upper()
+
+        if acct_to_match:
+            destination_account = acct_to_match.group(1).upper()
+        elif len(all_accts) >= 2 and not acct_from_match:
+            source_account = all_accts[0].upper()
+            destination_account = all_accts[1].upper()
+        elif len(all_accts) == 1 and acct_to_match:
+            source_account = accounts[0] if accounts else "ACC-1001"
 
         # Check for transfer / payment vs history lookup
         if any(w in request.lower() for w in ["transfer", "send", "pay", "wire"]):
@@ -218,6 +238,7 @@ class TransactionAgent(BaseFinTechAgent):
                 f"### 💸 Transaction Formulation Proposal\n\n"
                 f"- **Originator:** `{user_id}`\n"
                 f"- **Source Account:** `{source_account}`\n"
+                f"- **Destination Account:** `{destination_account}`\n"
                 f"- **Proposed Amount:** `{currency}{amount_val:,.2f}`\n"
                 f"- **Operational Status:** {status_desc}\n\n"
                 f"> **Safety Invariant:** No real financial execution was triggered. "
@@ -241,11 +262,13 @@ class TransactionAgent(BaseFinTechAgent):
             "response": response_text,
             "metadata": {
                 "source_account": source_account,
+                "destination_account": destination_account,
                 "amount": amount_val,
                 "currency": currency,
                 "is_real_execution": False
             }
         }
+
 
 
 class FraudAgent(BaseFinTechAgent):

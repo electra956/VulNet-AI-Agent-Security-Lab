@@ -144,6 +144,7 @@ class AgentOrchestrator:
         req_id = ctx_meta.get("request_id", "REQ-000000")
         sess_id = ctx_meta.get("session_id", "SESSION-001")
         usr_id = ctx_meta.get("user_id", "CUST-001")
+        ctx_meta.setdefault("user_id", usr_id)
 
         if tracer is None:
             tracer = RequestTracer(request_id=req_id, session_id=sess_id, user_id=usr_id, action="agent_orchestration")
@@ -279,6 +280,64 @@ class AgentOrchestrator:
                 mode=mode,
                 user_authorized=user_authorized
             )
+
+            # ------------------------------------------
+            # STEP 5B: END-TO-END TRANSACTION LIFECYCLE (Step 17)
+            # ------------------------------------------
+            is_transfer_request = (
+                routed_agent == "TransactionAgent"
+                and any(w in user_request.lower() for w in ["transfer", "send", "pay", "wire"])
+            )
+            if is_transfer_request:
+                from fintech.transaction_lifecycle import get_transaction_lifecycle_service
+                lifecycle = get_transaction_lifecycle_service()
+                lifecycle.mcp_server = self.mcp
+
+                lifecycle_res = lifecycle.process_transaction(
+                    request_text=user_request,
+                    session_context=ctx_meta,
+                    user_authorized=user_authorized,
+                    tracer=tracer,
+                    mode=mode,
+                    explicit_params=specialized_result.get("metadata")
+                )
+
+                pipeline_status = "completed"
+                final_trace = lifecycle_res.get("trace") or tracer.finalize(status=pipeline_status)
+
+                security_status = self.mcp.execute_tool("get_security_status")
+                audit_log = self.mcp.execute_tool(
+                    "create_audit_log",
+                    message=f"Transaction lifecycle: {lifecycle_res.get('transaction_id', 'N/A')} [{lifecycle_res.get('status')}]"
+                )
+
+                stages_executed.append(f"💳 Transaction Lifecycle: {lifecycle_res.get('status')}")
+                exec_time = int((datetime.now() - start_time).total_seconds() * 1000)
+
+                return {
+                    "user_request": user_request,
+                    "security": security_result,
+                    "session_context": ctx_meta,
+                    "retrieved_documents": retrieved_documents,
+                    "main_agent": main_result,
+                    "research_agent": research_result,
+                    "action_agent": action_result,
+                    "specialized_agent_result": specialized_result,
+                    "transaction": lifecycle_res.get("transaction"),
+                    "transaction_id": lifecycle_res.get("transaction_id"),
+                    "intent": intent,
+                    "routed_agent": routed_agent,
+                    "task_plan": task_plan,
+                    "final_response": lifecycle_res.get("response", specialized_result.get("response")),
+                    "mcp_security_status": security_status,
+                    "mcp_audit_log": audit_log,
+                    "pipeline_status": pipeline_status,
+                    "stages": stages_executed,
+                    "execution_time_ms": exec_time,
+                    "trace": final_trace,
+                    "checklist": final_trace.render_checklist()
+                }
+
 
             # ------------------------------------------
             # STEP 6: RISK ENGINE EVALUATION

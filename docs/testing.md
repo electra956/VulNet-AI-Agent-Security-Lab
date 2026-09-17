@@ -101,4 +101,9 @@ python -m py_compile agents/*.py api/*.py api/routes/*.py auth/*.py chatbot/*.py
 5. **Agent Goal Invariance Tests**: Validate that the Main Agent anchors the initial goal and detects goal drift.
 6. **Tool Authorization & RBAC Tests**: Validate tool permission checking, risk tiering, and parameter injection prevention.
 7. **Scenario Simulation Tests**: Validate that all 10 OWASP ASI scenarios execute reliably and emit structured security events.
+8. **FinTech Transaction Lifecycle Tests (`test_fintech_transaction_lifecycle.py`)**: Validate the complete 24-step pipeline, deterministic state transitions (`PENDING`, `RISK_CHECK`, `APPROVAL_REQUIRED`, `APPROVED`, `PROCESSING`, `COMPLETED`, `REJECTED`, `CANCELLED`, `FAILED`), human-in-the-loop approval gating, BOLA account isolation, and independent MCP authorization enforcement.
+
+```bash
+pytest tests/test_fintech_transaction_lifecycle.py -v
+```
 

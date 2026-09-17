@@ -360,6 +360,198 @@ class FinTechToolSuite:
             }
         }
 
+    def create_simulated_transaction(
+        self,
+        from_account: str,
+        to_account: str,
+        amount: float,
+        customer_id: Optional[str] = None,
+        currency: str = "USD",
+        description: str = "Simulated Transfer",
+        request_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        caller_role: Any = "CUSTOMER",
+        user_authorized: bool = False,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Execute simulated transaction through MCP Gateway (Step 17).
+        Enforces independent MCP-layer authorization:
+        1. Authenticated customer check
+        2. Role & permission check (Permission.TRANSACTION_CREATE)
+        3. Source account ownership validation (BOLA prevention)
+        4. Destination account validation (valid, != from_account)
+        5. Amount validation (> 0, <= available balance)
+        6. Deterministic risk check & human approval gate
+        7. In-memory ledger update and audit record generation
+        """
+        if not customer_id:
+            return {
+                "status": "blocked",
+                "decision": "DENY",
+                "tool": "create_simulated_transaction",
+                "reason": "Missing authenticated customer identity."
+            }
+
+        # Validate role permission
+        from auth.permissions import Permission
+        from auth.authorization import has_permission
+        from auth.roles import normalize_role
+        try:
+            role_norm = normalize_role(caller_role)
+            if not has_permission(role_norm, Permission.TRANSACTION_CREATE):
+                return {
+                    "status": "blocked",
+                    "decision": "DENY",
+                    "tool": "create_simulated_transaction",
+                    "reason": f"Insufficient privilege: Role '{role_norm.value}' lacks permission '{Permission.TRANSACTION_CREATE.value}'."
+                }
+        except Exception:
+            pass
+
+        # Validate source account & ownership
+        src = self.accounts.get(from_account)
+        if not src:
+            return {
+                "status": "error",
+                "decision": "DENY",
+                "tool": "create_simulated_transaction",
+                "reason": f"Source account '{from_account}' not found."
+            }
+
+        if src["customer_id"] != customer_id:
+            return {
+                "status": "blocked",
+                "decision": "DENY",
+                "tool": "create_simulated_transaction",
+                "reason": f"Unauthorized: Customer '{customer_id}' does not own account '{from_account}'."
+            }
+
+        # Validate destination account
+        if from_account == to_account:
+            return {
+                "status": "error",
+                "decision": "DENY",
+                "tool": "create_simulated_transaction",
+                "reason": "Destination account cannot be identical to source account."
+            }
+
+        # Validate amount
+        try:
+            amt = float(amount)
+        except (ValueError, TypeError):
+            return {
+                "status": "error",
+                "decision": "DENY",
+                "tool": "create_simulated_transaction",
+                "reason": f"Invalid transaction amount: {amount}."
+            }
+
+        if amt <= 0:
+            return {
+                "status": "error",
+                "decision": "DENY",
+                "tool": "create_simulated_transaction",
+                "reason": f"Payment amount must be positive, got {amt}."
+            }
+
+        # Evaluate risk deterministically before execution
+        risk_eval = self.risk_engine.evaluate({
+            "amount": amt,
+            "from_account": from_account,
+            "to_account": to_account,
+            "available_balance": src["balance"]
+        })
+
+        is_high_risk = (
+            risk_eval.risk_level in ("HIGH", "CRITICAL")
+            or risk_eval.decision in ("REVIEW", "BLOCK")
+            or amt >= 10000.0
+        )
+
+        if is_high_risk and not user_authorized:
+            return {
+                "status": "blocked",
+                "decision": "DENY",
+                "tool": "create_simulated_transaction",
+                "risk_level": risk_eval.risk_level,
+                "reason": f"High-risk transaction (${amt:,.2f}) requires explicit human authorization.",
+                "requires_approval": True
+            }
+
+        if risk_eval.decision == "BLOCK":
+            return {
+                "status": "blocked",
+                "decision": "DENY",
+                "tool": "create_simulated_transaction",
+                "risk_level": risk_eval.risk_level,
+                "reason": f"Transaction blocked by risk policy: {', '.join(risk_eval.reasons)}."
+            }
+
+        if src["balance"] < amt:
+            return {
+                "status": "error",
+                "decision": "DENY",
+                "tool": "create_simulated_transaction",
+                "reason": f"Insufficient funds: account '{from_account}' has balance ${src['balance']:,.2f} < ${amt:,.2f}."
+            }
+
+        if risk_eval.decision == "BLOCK":
+            return {
+                "status": "blocked",
+                "decision": "DENY",
+                "tool": "create_simulated_transaction",
+                "risk_level": "CRITICAL",
+                "reason": "Transaction blocked by risk policy."
+            }
+
+        # Deduct from source
+        src["balance"] = round(src["balance"] - amt, 2)
+
+        # Credit destination if internal
+        if to_account in self.accounts:
+            self.accounts[to_account]["balance"] = round(self.accounts[to_account]["balance"] + amt, 2)
+
+        txn_id = f"TXN-SIM-{datetime.now().strftime('%Y%m%d%H%M%S%f')[:17]}"
+        new_txn = {
+            "transaction_id": txn_id,
+            "request_id": request_id or "",
+            "session_id": session_id or "",
+            "user_id": customer_id,
+            "source_account": from_account,
+            "source_account_id": from_account,
+            "destination_account": to_account,
+            "destination_account_id": to_account,
+            "amount": amt,
+            "currency": currency,
+            "timestamp": datetime.now().isoformat(),
+            "status": "COMPLETED",
+            "risk_level": risk_eval.risk_level,
+            "approval_status": "APPROVED" if user_authorized else "NONE",
+            "category": "TRANSFER",
+            "description": description
+        }
+        self.transactions.insert(0, new_txn)
+
+        return {
+            "status": "success",
+            "tool": "create_simulated_transaction",
+            "decision": "ALLOW",
+            "risk_level": risk_eval.risk_level,
+            "result": {
+                "transaction_id": txn_id,
+                "request_id": request_id or "",
+                "from_account": from_account,
+                "to_account": to_account,
+                "amount": amt,
+                "currency": currency,
+                "remaining_balance": src["balance"],
+                "status": "COMPLETED",
+                "real_funds_moved": False
+            }
+        }
+
+
     def schedule_payment(
         self,
         from_account: str,

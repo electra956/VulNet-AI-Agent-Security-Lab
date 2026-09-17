@@ -551,6 +551,84 @@ The **VulNet AI Agent Security Lab** is an educational and security research pla
 
 ---
 
+### 3.17 Complete FinTech Transaction Lifecycle & State Management (Step 17)
+- **Objective**: Implements an end-to-end, realistic FinTech transaction pipeline operating strictly on local in-memory synthetic state without contacting real financial networks, payment gateways, or live funds.
+- **End-to-End Processing Architecture**:
+  ```
+  CUSTOMER
+    ↓
+  CHATBOT
+    ↓
+  API GATEWAY
+    ↓
+  AUTHENTICATION
+    ↓
+  SESSION
+    ↓
+  AI SECURITY GATEWAY
+    ↓
+  MAIN AGENT / ORCHESTRATOR
+    ↓
+  TRANSACTION AGENT
+    ↓
+  RBAC AUTHORIZATION
+    ↓
+  RISK ENGINE
+    ↓
+  MCP TOOL GATEWAY
+    ↓
+  SIMULATED FINTECH TOOL
+    ↓
+  AUDIT / TRACE
+    ↓
+  FINAL RESPONSE
+  ```
+- **24-Step Deterministic Pipeline (`fintech/transaction_lifecycle.py`)**:
+  1. `request_id` generation / correlation.
+  2. `session_id` validation and session context retrieval.
+  3. User authentication verification (rejects unauthenticated/guest sessions).
+  4. Customer profile and account ownership resolution.
+  5. Session state inspection and cross-tenant boundary verification.
+  6. AI Security Gateway perimeter evaluation (prompt injection, threat defense).
+  7. User intent classification and natural language transaction parameter extraction.
+  8. Routing to `TransactionAgent`.
+  9. Operation request validation (`create_simulated_transaction`).
+  10. Deterministic RBAC authorization (`Permission.TRANSACTION_CREATE`).
+  11. Source account ownership validation (BOLA / Broken Object Level Authorization prevention).
+  12. Destination account validation (exists, distinct from source).
+  13. Transaction amount validation (`> 0`, `<= available balance`).
+  14. Deterministic `TransactionRiskEngine` calculation (velocity, amount, sanctions).
+  15. Human approval evaluation gate (`amount >= 10,000` or `HIGH`/`CRITICAL` risk routes to `APPROVAL_REQUIRED`).
+  16. Dispatch to MCP Tool Gateway upon approval or low risk.
+  17. Independent MCP Gateway re-validation (role, permission, arguments, ownership, risk level).
+  18. Execution in `ExecutionSandbox` using synthetic in-memory banking ledger.
+  19. Unique transaction ID generation (`TXN-SIM-...`).
+  20. In-memory balance updates (source debited, destination credited).
+  21. Structured audit event generation to `logs/audit.jsonl`.
+  22. Complete 11-stage agent trace recorded to `TraceStore`.
+  23. Structured transaction response object formulated.
+  24. Response rendering in Chatbot & Streamlit dashboard.
+- **Deterministic Transaction State Machine**:
+  - `PENDING`: Initial state upon creation.
+  - `RISK_CHECK`: Transaction undergoing programmatic risk evaluation.
+  - `APPROVAL_REQUIRED`: High-risk transaction queued for human review.
+  - `APPROVED`: Explicit human authorization granted.
+  - `PROCESSING`: Handed off to MCP Tool Gateway sandbox.
+  - `COMPLETED`: In-memory ledger updated and transfer executed.
+  - `REJECTED`: Blocked by policy, RBAC, BOLA, or perimeter gate.
+  - `CANCELLED`: Aborted prior to processing.
+  - `FAILED`: Execution or balance verification failure.
+- **Deterministic Core Scenarios**:
+  - **Normal Low-Risk (₹500 from ACC-1001 to ACC-2001)**: Authenticated → Authorized → Low Risk → No Human Approval → MCP Allowed → Executed → `COMPLETED` → Audit Created.
+  - **High-Risk (₹50,000 from ACC-1001 to ACC-2001)**: Authenticated → Authorized → High Risk → `APPROVAL_REQUIRED` → MCP execution blocked → Agent cannot self-approve.
+  - **Unauthorized Account (CUST-001 operating on ACC-2001)**: Authenticated → Ownership verification fails (BOLA) → Tool blocked → `REJECTED` → Security alert logged.
+- **Critical Architectural Invariants**:
+  - The AI Agent / LLM can NEVER approve its own transactions or override deterministic security controls.
+  - MCP Gateway re-validates permissions and account ownership independently; it never blindly trusts agent instructions.
+  - Zero external network calls or real banking systems are ever contacted.
+
+---
+
 ## 4. Security Invariants
 1. **No External Network Calls**: All operations execute locally in-memory.
 2. **No Real Financial Infrastructure**: Zero connections to ACH, SWIFT, FedNow, credit networks, or real payment processors.

@@ -433,6 +433,29 @@ def create_default_registry(fintech_suite: Optional[FinTechToolSuite] = None) ->
         handler=FinTechSafeTools.create_transfer_simulation
     ))
 
+    # Step 17 simulated financial transaction tool
+    registry.register(ToolMetadata(
+        name="create_simulated_transaction",
+        description="Execute simulated financial transaction with full independent MCP authorization checks.",
+        risk_level="LOW",
+        allowed_roles=["CUSTOMER", "ADMIN", "USER"],
+        requires_approval=False,  # Evaluated dynamically by handler based on amount/risk
+        input_schema={
+            "properties": {
+                "from_account": {"type": "string"},
+                "to_account": {"type": "string"},
+                "amount": {"type": "number"},
+                "customer_id": {"type": "string"},
+                "currency": {"type": "string"},
+                "description": {"type": "string"}
+            },
+            "required": ["from_account", "to_account", "amount"]
+        },
+        output_schema={"required": ["status", "tool", "result"]},
+        handler=ft.create_simulated_transaction
+    ))
+
+
     registry.register(ToolMetadata(
         name="schedule_payment",
         description="Schedule a future simulated payment.",
