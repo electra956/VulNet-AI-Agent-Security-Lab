@@ -35,7 +35,7 @@ Write-Host ""
 Write-Host "[2/5] Setting up virtual environment..." -ForegroundColor Yellow
 
 # If venv exists but lacks Scripts (e.g. created under WSL/Linux with bin/), recreate for Windows native
-if (Test-Path "venv\bin" -and -not (Test-Path "venv\Scripts")) {
+if ((Test-Path "venv\bin") -and (-not (Test-Path "venv\Scripts"))) {
     Write-Host "Detected Linux/WSL virtual environment in .\venv. Creating Windows .\venv_win..." -ForegroundColor Yellow
     $venvPath = "venv_win"
 } else {
