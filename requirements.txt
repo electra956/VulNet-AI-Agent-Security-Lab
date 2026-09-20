@@ -7,3 +7,4 @@ mcp[cli]
 fastapi
 uvicorn
 httpx
+ollama>=0.4.0

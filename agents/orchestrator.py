@@ -30,6 +30,14 @@ from agents.specialized_agents import (
 )
 from mcp_server.server import MCPServer
 from security.security_controller import SecurityController
+from security.guardrails import (
+    InputGuardrail,
+    RAGGuardrail,
+    ToolGuardrail,
+    OutputGuardrail,
+    GuardrailDecision,
+)
+from llm.ollama_client import get_ollama_client, OllamaClient
 from observability.trace import RequestTracer, AgentTrace, get_trace_store
 from observability.audit import get_audit_logger
 from observability.events import TraceStageName, StageStatus
@@ -43,6 +51,7 @@ class AgentOrchestrator:
     - Centralized execution control across specialized domain agents
     - Intent classification, task planning, and routing via Main Agent
     - Security perimeter validation before processing begins
+    - Layered Guardrails (Input, RAG, Tool, Output)
     - Fail-safe error containment (prevents cascading pipeline crashes)
     - Full telemetry trace logging
     """
@@ -54,6 +63,13 @@ class AgentOrchestrator:
         self.research_agent = ResearchAgent()
         self.action_agent = ActionAgent()
         self.mcp = MCPServer(mode=mode, security_controller=self.security)
+
+        # Layered Guardrails Middleware
+        self.input_guardrail = InputGuardrail(mode=mode)
+        self.rag_guardrail = RAGGuardrail(mode=mode)
+        self.tool_guardrail = ToolGuardrail(mode=mode)
+        self.output_guardrail = OutputGuardrail(mode=mode)
+        self.ollama = get_ollama_client()
 
         # Specialized FinTech Domain Agents
         self.specialized_agents: Dict[str, BaseFinTechAgent] = {
@@ -75,6 +91,10 @@ class AgentOrchestrator:
         """Propagate security mode across all subsystems."""
         self.security.set_mode(mode)
         self.mcp.set_mode(mode)
+        self.input_guardrail.set_mode(mode)
+        self.rag_guardrail.set_mode(mode)
+        self.tool_guardrail.set_mode(mode)
+        self.output_guardrail.set_mode(mode)
 
     def get_mode(self) -> str:
         """Get the current security mode."""
@@ -157,15 +177,16 @@ class AgentOrchestrator:
 
         try:
             # ------------------------------------------
-            # STEP 0: PERIMETER SECURITY EVALUATION
+            # STEP 0: LAYERED INPUT GUARDRAIL & PERIMETER EVALUATION
             # ------------------------------------------
+            input_guard = self.input_guardrail.inspect(user_request, request_id=req_id, session_context=ctx_meta)
             tracer.start_stage("Security Gateway")
-            stages_executed.append("🛡️ Security Controller: Request Evaluation")
+            stages_executed.append("🛡️ Security Controller & Input Guardrail: Request Evaluation")
             security_result = self.security.evaluate_request(user_request, session_context=ctx_meta)
 
-            if security_result.get("blocked", False) or security_result.get("decision") == "BLOCK":
+            if input_guard.is_blocked() or security_result.get("blocked", False) or security_result.get("decision") == "BLOCK":
                 stages_executed.append("🚫 Pipeline Halted: Security Rule Blocked")
-                reason = security_result.get("message", "Request blocked by security perimeter.")
+                reason = input_guard.reason if input_guard.is_blocked() else security_result.get("message", "Request blocked by security perimeter.")
                 tracer.record_stage("Security Gateway", status=StageStatus.BLOCKED.value, details=reason)
 
                 # Skip subsequent execution stages in trace
@@ -188,7 +209,7 @@ class AgentOrchestrator:
                     status="blocked",
                     risk="HIGH",
                     error=reason,
-                    metadata={"security_eval": security_result}
+                    metadata={"security_eval": security_result, "input_guardrail": input_guard.to_dict()}
                 )
                 tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details=f"Security alert logged ({audit_rec.audit_id})")
 
@@ -198,6 +219,12 @@ class AgentOrchestrator:
                 return {
                     "user_request": user_request,
                     "security": security_result,
+                    "guardrails": {
+                        "input_guardrail": input_guard.to_dict(),
+                        "rag_guardrail": None,
+                        "tool_guardrail": None,
+                        "output_guardrail": None,
+                    },
                     "session_context": ctx_meta,
                     "retrieved_documents": [],
                     "main_agent": None,
@@ -220,10 +247,12 @@ class AgentOrchestrator:
             tracer.record_stage("Security Gateway", status=StageStatus.SUCCESS.value, details="Perimeter check passed")
 
             # ------------------------------------------
-            # STEP 1: RAG RETRIEVAL
+            # STEP 1: RAG RETRIEVAL & RAG GUARDRAIL
             # ------------------------------------------
             stages_executed.append("📚 RAG: Document Retrieval & Threat Scan")
             retrieved_documents = self.rag.search(user_request)
+            rag_guard = self.rag_guardrail.inspect_and_sanitize(retrieved_documents, request_id=req_id)
+            retrieved_documents = rag_guard.details.get("sanitized_chunks", retrieved_documents)
 
             # ------------------------------------------
             # STEP 2: MAIN AGENT ANALYSIS & TASK PLANNING
@@ -314,9 +343,28 @@ class AgentOrchestrator:
                 stages_executed.append(f"💳 Transaction Lifecycle: {lifecycle_res.get('status')}")
                 exec_time = int((datetime.now() - start_time).total_seconds() * 1000)
 
+                raw_resp = lifecycle_res.get("response", specialized_result.get("response"))
+                tool_results = [{
+                    "tool_name": "transfer_funds",
+                    "status": "completed" if lifecycle_res.get("status") in ("COMPLETED", "completed", "PENDING_APPROVAL") else "failed"
+                }]
+                output_guard = self.output_guardrail.validate_output(raw_resp, tool_results=tool_results, request_id=req_id)
+                final_resp = output_guard.sanitized_content or raw_resp
+
                 return {
                     "user_request": user_request,
                     "security": security_result,
+                    "guardrails": {
+                        "input_guardrail": input_guard.to_dict(),
+                        "rag_guardrail": rag_guard.to_dict() if 'rag_guard' in locals() else None,
+                        "tool_guardrail": {
+                            "decision": "ALLOW" if lifecycle_res.get("status") != "blocked" else "BLOCK",
+                            "guardrail_name": "ToolGuardrail",
+                            "risk_level": "LOW" if lifecycle_res.get("status") != "blocked" else "HIGH",
+                            "reason": f"Transaction lifecycle executed with status: {lifecycle_res.get('status')}",
+                        },
+                        "output_guardrail": output_guard.to_dict(),
+                    },
                     "session_context": ctx_meta,
                     "retrieved_documents": retrieved_documents,
                     "main_agent": main_result,
@@ -328,7 +376,7 @@ class AgentOrchestrator:
                     "intent": intent,
                     "routed_agent": routed_agent,
                     "task_plan": task_plan,
-                    "final_response": lifecycle_res.get("response", specialized_result.get("response")),
+                    "final_response": final_resp,
                     "mcp_security_status": security_status,
                     "mcp_audit_log": audit_log,
                     "pipeline_status": pipeline_status,
@@ -420,10 +468,19 @@ class AgentOrchestrator:
                 tool="create_audit_log"
             )
             get_trace_store().add_trace(final_trace)
+            raw_resp = specialized_result.get("response", "Request processed successfully.")
+            output_guard = self.output_guardrail.validate_output(raw_resp, request_id=req_id)
+            final_resp = output_guard.sanitized_content or raw_resp
 
             return {
                 "user_request": user_request,
                 "security": security_result,
+                "guardrails": {
+                    "input_guardrail": input_guard.to_dict(),
+                    "rag_guardrail": rag_guard.to_dict() if 'rag_guard' in locals() else None,
+                    "tool_guardrail": None,
+                    "output_guardrail": output_guard.to_dict(),
+                },
                 "session_context": ctx_meta,
                 "retrieved_documents": retrieved_documents,
                 "main_agent": main_result,
@@ -433,7 +490,7 @@ class AgentOrchestrator:
                 "intent": intent,
                 "routed_agent": routed_agent,
                 "task_plan": task_plan,
-                "final_response": specialized_result.get("response", "Request processed successfully."),
+                "final_response": final_resp,
                 "mcp_security_status": security_status,
                 "mcp_audit_log": audit_log,
                 "pipeline_status": "completed",

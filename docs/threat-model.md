@@ -27,52 +27,72 @@ This threat model outlines the assets, threat actors, trust boundaries, and atta
 ## 4. Trust Boundaries & Attack Surfaces
 
 ```text
-[ External Client / Web Browser ]
-       │ (HTTP Requests, JSON Payloads)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 1: API Gateway ]
-[ FastAPI Gateway / Reverse Proxy ]
-       │ (Authentication Verification, PBKDF2 + MFA Check)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 2: Identity & Session ]
-[ Auth Manager & SessionContext Router ]
+[ External Client / Web Browser / Streamlit UI ]
+       │ (HTTP Requests, JSON Payloads, User Chat Input)
+═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 1: Input Guardrail ]
+[ Input Guardrail (Perimeter Regex, Role Hijacking, Length Checks) ]
+       │ (Sanitized User Input)
+═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 2: API & Session Gateway ]
+[ FastAPI Gateway / AuthManager (PBKDF2, MFA, Session Isolation) ]
        │ (Validated SessionContext: Customer ID, Role, Accounts)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 3: Security Controller ]
-[ Security Controller (Heuristic Signatures & Mode Check) ]
-       │
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 4: FinTech Domain ]
-[ FinTech Domain Service (Ownership Invariant Enforcement) ]
-       │
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 5: RAG Context ]
-[ RAG Engine / Knowledge Base (TF-IDF Retrieval) ]
-       │
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 6: Multi-Agent Bus ]
-[ Main Agent ◄──► Research Agent ◄──► Action Agent ]
-       │
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 7: MCP Server ]
-[ MCP Server (RBAC & Parameter Sanitization) ]
-       │
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 8: Backend Tools ]
-[ Safe Demo Tools & Audit Logger ]
+═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 3: RAG Retrieval & Guardrail ]
+[ RAG VectorStore & RAG Guardrail (Indirect Prompt Injection Sanitization) ]
+       │ (Sanitized Context + Immutable Data Tags)
+═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 4: LLM Reasoning (UNTRUSTED) ]
+[ Ollama LLM Client / llama3.2 (Natural Language & Tool Proposal ONLY) ]
+       │ (Proposed Action / Tool Call Parameters)
+═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 5: Tool Guardrail ]
+[ Tool Guardrail (Whitelist Verification, Metacharacter Scan, Domain Invariants) ]
+       │ (Clean Tool Call)
+═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 6: Deterministic Core (OUTSIDE LLM) ]
+[ FinTech Service / RBAC / BOLA Ownership / Risk Engine / Human Approval Gate ]
+       │ (Approved In-Memory Execution)
+═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 7: MCP Server & In-Memory Ledger ]
+[ MCP Server / Synthetic Banking Ledger / Append-Only Audit Logger ]
+       │ (Raw Response Payload)
+═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 8: Output Guardrail ]
+[ Output Guardrail (PCI PAN Redaction, Token/Secret Redaction, Leakage Checks) ]
+       │ (Sanitized Safe Client Response)
+═══════▼══════════════════════════════════════════════════════
+[ Client UI / Trace Store ]
 ```
 
 ---
 
-## 5. STRIDE Threat Mapping
+## 5. LLM Trust Boundary Definition
+
+In VulNet AI Agent Security Lab, the Large Language Model (local Ollama `llama3.2` or fallback simulator) is explicitly treated as an **UNTRUSTED reasoning component**:
+
+| Capability | LLM Trusted? | Enforcement Mechanism |
+| :--- | :--- | :--- |
+| **Conversational Fluency & Explanation** | ✅ Trusted | Generates natural language responses based on retrieved context. |
+| **Tool Call Proposal** | ⚠️ Partially Trusted | May suggest tools and parameters, but execution is never automated without inspection. |
+| **Authorization & Access Control** | ❌ **NOT TRUSTED** | Enforced deterministically in Python (`auth/authorization.py`, `fintech/service.py`). |
+| **Account Ownership & BOLA Checks** | ❌ **NOT TRUSTED** | Hardcoded checks verify `customer_id` owns `source_account`. |
+| **Financial Transaction Execution** | ❌ **NOT TRUSTED** | Bounded by risk limits ($10,000 threshold) and Human Approval gate. |
+| **Security Decision Making** | ❌ **NOT TRUSTED** | Guardrails and Security Controller operate external to the prompt space. |
+| **Secret & Sensitive Data Handling** | ❌ **NOT TRUSTED** | Output Guardrail redacts PANs, tokens, and keys before presentation. |
+
+---
+
+## 6. STRIDE Threat Mapping
 
 | STRIDE Category | Agentic & FinTech Risk | Vulnerability | Applied Countermeasure |
 | :--- | :--- | :--- | :--- |
 | **Spoofing** | Session token forgery / MFA bypass | ASI03 Identity Abuse | PBKDF2-HMAC-SHA256 password hashes, one-time MFA challenges, and cryptographically random session tokens. |
-| **Tampering** | Injected tool parameters or Cross-Account query tampering | ASI02 Tool Misuse / BOLA | Strict Pydantic models, domain service ownership checks (`validate_customer_owns_account`). |
-| **Repudiation** | Unaudited financial queries or security attacks | ASI02 / ASI03 Tool Abuse | Centralized JSON security telemetry logger, correlated `request_id`, and immutable audit entries. |
-| **Information Disclosure** | Cross-customer balance leakage or prompt extraction | ASI01 Goal Hijack / ASI03 | Strict account ownership validation, perimeter signature filtering, and role segregation. |
-| **Denial of Service** | Cascading failure & Rogue sub-agent spawning | ASI08 / ASI10 | Circuit breakers, graceful degradation, request size limits, and sub-agent spawn quotas. |
-| **Elevation of Privilege** | Customer assuming Admin or Fraud Analyst role | ASI03 Identity Abuse | Hierarchical Role-Based Access Control (`customer`, `support`, `fraud_analyst`, `admin`). |
+| **Tampering** | Injected tool parameters or Cross-Account query tampering | ASI02 Tool Misuse / BOLA | Tool Guardrail parameter sanitization, domain service ownership checks (`validate_customer_owns_account`). |
+| **Repudiation** | Unaudited financial queries or security attacks | ASI02 / ASI03 Tool Abuse | Centralized JSON security telemetry logger, correlated `request_id`, and immutable append-only audit entries. |
+| **Information Disclosure** | Cross-customer balance leakage or prompt extraction | ASI01 Goal Hijack / ASI03 | Output Guardrail regex redaction (`[REDACTED_SENSITIVE_DATA]`), strict account ownership checks, and role segregation. |
+| **Denial of Service** | Cascading failure & Rogue sub-agent spawning | ASI08 / ASI10 | Circuit breakers, graceful degradation, input length/entropy bounds, and sub-agent spawn quotas. |
+| **Elevation of Privilege** | Customer assuming Admin or Fraud Analyst role | ASI03 Identity Abuse | Hierarchical Role-Based Access Control (`customer`, `support`, `fraud_analyst`, `admin`) enforced outside LLM. |
 
 ---
 
-## 6. Defensive Architecture Principles
-1. **Never Trust Retrieved Context as Instructions**: Wrap external data in strict semantic XML boundaries.
-2. **Deterministic Security Controls Outside the LLM**: Security checks must be implemented in deterministic Python code rather than relying exclusively on LLM self-moderation.
-3. **Session & Tenant Isolation by Default**: Every request carries an immutable `SessionContext` verifying customer ownership at the domain service layer.
-4. **Least Privilege by Default**: Downstream tools and accounts require explicit authorization for high-risk operations.
-5. **Fail-Safe Containment**: An isolated tool error must never cause an application-wide crash.
+## 7. Defensive Architecture Principles
+1. **Never Trust Retrieved Context as Instructions**: Wrap external data in strict semantic XML boundaries and sanitize via RAG Guardrail.
+2. **Deterministic Security Controls Strictly Outside the LLM**: Security checks (RBAC, BOLA, Limits, Approvals) must be implemented in deterministic Python code rather than relying on LLM self-moderation.
+3. **Defense-in-Depth Layered Guardrails**: 4 distinct guardrail layers (Input, RAG, Tool, Output) intercept threats at each phase of execution.
+4. **Session & Tenant Isolation by Default**: Every request carries an immutable `SessionContext` verifying customer ownership at the domain service layer.
+5. **Least Privilege by Default**: Downstream tools and accounts require explicit authorization for high-risk operations.
+6. **Fail-Safe Containment**: An isolated tool error or LLM failure must gracefully fall back without causing an application-wide crash.
 

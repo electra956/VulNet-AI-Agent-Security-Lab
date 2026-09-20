@@ -14,75 +14,85 @@ The **VulNet AI Agent Security Lab** is an educational and security research pla
                                │
                                ▼
                      ┌───────────────────┐
-                     │  STREAMLIT FRONTEND│
-                     │   (chatbot/app.py) │
+                     │  STREAMLIT / API  │
+                     │  (chatbot/app.py) │
                      └─────────┬─────────┘
-                               │ HTTP Requests / JSON
+                               │ HTTP Requests / Session Token
+                               ▼
+               ┌───────────────────────────────┐
+               │   1. INPUT GUARDRAIL          │◄─────── Stage 1: Ingress Scan
+               │  - Direct Injection Regex     │        (blocks prompt leaks, jailbreaks,
+               │  - Role Assumption / Override │         role hijacks before downstream)
+               │  - Length & Entropy Checks    │
+               └───────────────┬───────────────┘
+                               │ Allowed
+                               ▼
+               ┌───────────────────────────────┐
+               │    SESSION & AUTH GATEWAY     │
+               │  - PBKDF2 / Session Token     │
+               │  - Strict Session Isolation   │
+               └───────────────┬───────────────┘
+                               │ Authenticated Context
+                               ▼
+               ┌───────────────────────────────┐
+               │     2. RAG ENGINE & VECTOR    │
+               │  - VectorStore / Embeddings   │
+               │  - RAG GUARDRAIL:             │◄─────── Stage 2: Retrieval Defense
+               │    * Indirect Injection Scan  │        (sanitizes doc chunks, tags trust)
+               │    * Instruction Stripping    │
+               └───────────────┬───────────────┘
+                               │ Sanitized Grounding Context
+                               ▼
+               ┌───────────────────────────────┐
+               │      MAIN AGENT / ORCHESTRATOR│
+               │  - Immutable Goal Anchoring   │
+               │  - Intent Classification      │
+               └───────────────┬───────────────┘
+                               │
+                               ▼
+               ┌───────────────────────────────┐
+               │    3. OLLAMA LLM CLIENT       │
+               │  - Real llama3.2 (Local/WSL)  │◄─────── Real Local LLM Inference
+               │  - WSL Auto-Discovery Bridge  │        (graceful offline simulation)
+               │  - Untrusted Reasoning Engine │
+               └───────────────┬───────────────┘
+                               │ Proposed Action / Tool Call
+                               ▼
+               ┌───────────────────────────────┐
+               │    4. TOOL GUARDRAIL          │◄─────── Stage 3: Tool Execution Gate
+               │  - Tool Whitelist Check       │        (metacharacter injection scan,
+               │  - Param Schema Validation    │         dest account != src account,
+               │  - Metacharacter Rejection    │         amount bounds validation)
+               └───────────────┬───────────────┘
+                               │ Validated Tool Call
+                               ▼
+               ┌───────────────────────────────┐
+               │     DETERMINISTIC CONTROLS    │◄─────── Strictly OUTSIDE LLM
+               │  - RBAC & BOLA Ownership Check│
+               │  - Risk Engine (Low/Med/High) │
+               │  - Human-in-the-Loop Gate     │
+               └───────────────┬───────────────┘
+                               │ Approved Execution
+                               ▼
+               ┌───────────────────────────────┐
+               │     MCP SERVER & SANDBOX      │
+               │  - In-Memory Synthetic Ledger │
+               │  - Append-Only Audit Trail    │
+               └───────────────┬───────────────┘
+                               │ Tool Result
+                               ▼
+               ┌───────────────────────────────┐
+               │   5. OUTPUT GUARDRAIL         │◄─────── Stage 4: Egress Defense
+               │  - PCI / Card Number Redaction│        (redacts PANs, PII, API tokens,
+               │  - Token / Secret Redaction   │         system prompt leakage)
+               │  - Leakage Canary Check       │
+               └───────────────┬───────────────┘
+                               │ Sanitized Safe Response
                                ▼
                      ┌───────────────────┐
-                     │  FASTAPI GATEWAY  │
-                     │    (api/main.py)  │
-                     └─────────┬─────────┘
-                               │ Endpoints: /health, /chat, /account, /security/evaluate
-                               ▼
-               ┌───────────────────────────────┐
-               │      SECURITY CONTROLLER      │◄─────── Mode: Secure vs Vulnerable
-               │  - Perimeter Regex & Signatures│
-               │  - Direct Prompt Injection     │
-               │  - Security Telemetry Logger   │
-               └───────────────┬───────────────┘
-                               │ (Allowed or Vulnerable Simulation)
-                               ▼
-               ┌───────────────────────────────┐
-               │          RAG ENGINE           │
-               │  - TF-IDF + Cosine Similarity │
-               │  - Instruction/Data Separation│
-               │  - Trust Classification       │
-               │  - Indirect Injection Scanning│
-               └───────────────┬───────────────┘
-                               │ Context & Documents
-                               ▼
-               ┌───────────────────────────────┐
-               │          MAIN AGENT           │
-               │  - Objective Anchoring        │
-               │  - Goal Drift Detection       │
-               │  - Workflow Coordination      │
-               └───────────────┬───────────────┘
-                               │
-                               ▼
-               ┌───────────────────────────────┐
-               │        RESEARCH AGENT         │
-               │  - Untrusted Evidence Boundary│
-               │  - Factual Finding Extraction │
-               │  - Command Neutralization     │
-               └───────────────┬───────────────┘
-                               │
-                               ▼
-               ┌───────────────────────────────┐
-               │         ACTION AGENT          │
-               │  - Action Proposal Formulator │
-               │  - Risk Tiering (L/M/H)       │
-               │  - Human-in-the-Loop Gating   │
-               └───────────────┬───────────────┘
-                               │ Tool Call Request
-                               ▼
-               ┌───────────────────────────────┐
-               │          MCP SERVER           │
-               │  - Tool Whitelist Registry    │
-               │  - RBAC (Guest/User/Admin)    │
-               │  - Parameter Sanitization     │
-               │  - High-Risk Authorization    │
-               └───────────────┬───────────────┘
-                               │
-                               ▼
-               ┌───────────────────────────────┐
-               │        SAFE DEMO TOOLS        │
-               │  - get_security_status        │
-               │  - check_tool_permission      │
-               │  - create_audit_log           │
-               │  - execute_data_export        │
-               │  - modify_system_policy       │
-               └───────────────────────────────┘
+                     │  CLIENT RESPONSE  │
+                     │  + 11-Stage Trace │
+                     └───────────────────┘
 ```
 
 ---
@@ -626,6 +636,54 @@ The **VulNet AI Agent Security Lab** is an educational and security research pla
   - The AI Agent / LLM can NEVER approve its own transactions or override deterministic security controls.
   - MCP Gateway re-validates permissions and account ownership independently; it never blindly trusts agent instructions.
   - Zero external network calls or real banking systems are ever contacted.
+
+---
+
+### 3.19 Real Local LLM Integration (`llm/ollama_client.py`)
+- **Objective**: Provides authentic conversational intelligence and reasoning using a locally hosted LLM via Ollama (`llama3.2`), completely avoiding external cloud APIs or data leakage.
+- **Dynamic WSL Bridge & Host Auto-Discovery**:
+  - Automatically probes candidate URLs:
+    1. Explicit `base_url` or `OLLAMA_BASE_URL` environment variable.
+    2. `http://localhost:11434` / `http://127.0.0.1:11434`.
+    3. WSL Default Gateway / Virtual Interface IP (e.g., `172.24.106.69:11434`) dynamically resolved on Windows via `ipconfig` parsing.
+  - Transparently bridges Windows host processes to Ollama running inside Linux/WSL with NVIDIA GPU acceleration.
+- **Graceful Offline Simulation Fallback**:
+  - If Ollama is unreachable or a model is not installed, the client falls back to a deterministic, high-fidelity FinTech conversational simulation without crashing or disrupting the user session.
+- **Streaming & Non-Streaming Generation**: Supports both full-response generation (`generate(prompt)`) and token streaming (`stream_chat(prompt)`) for responsive UI rendering.
+
+---
+
+### 3.20 Real Local RAG & Vector Store (`rag/rag_engine.py`, `rag/vector_store.py`)
+- **Vector Storage**: In-memory dense vector store (`VectorStore`) indexing policy documents from `rag/knowledge/fintech_policies.txt` using chunking, similarity scoring, and embedding vectors.
+- **Retrieval Pipeline**:
+  - Queries are embedded and compared against stored policy chunks using cosine similarity.
+  - Context is retrieved with relevant chunk references, source tags, and document types (`BANKING_POLICY`, `SECURITY_POLICY`, etc.).
+- **Singleton Lifecycle**: Managed through `get_rag_engine()` factory ensuring synchronized state between API gateway, Streamlit UI, and multi-agent orchestrator.
+
+---
+
+### 3.21 Layered Guardrails Defense-in-Depth (`security/guardrails/`)
+- **Philosophy**: Multi-stage, defense-in-depth perimeter where each stage enforces specialized security checks. Never rely on the LLM to police itself.
+- **Stage 1: Input Guardrail (`security/guardrails/input_guardrail.py`)**:
+  - Evaluates user prompt at ingress before reaching agents or LLM.
+  - Detects prompt injection keywords (`ignore previous instructions`, `system override`, `dan mode`, `jailbreak`).
+  - Checks role assumption patterns, high-entropy payloads, and character length anomalies.
+  - In Secure Mode: Immediately halts request and returns `BLOCKED`. In Vulnerable Mode: Tags threat for educational trace inspection.
+- **Stage 2: RAG Guardrail (`security/guardrails/rag_guardrail.py`)**:
+  - Evaluates retrieved document chunks before context assembly.
+  - Scans for indirect prompt injection embedded inside knowledge docs or user uploads.
+  - Neutralizes executable directives into passive text (`[NEUTRALIZED_UNTRUSTED_INSTRUCTION]`).
+  - Strict Instruction/Data separation: context is enclosed in immutable data tags.
+- **Stage 3: Tool Guardrail (`security/guardrails/tool_guardrail.py`)**:
+  - Sits between agent tool proposal and MCP server execution.
+  - Validates tool names against strict whitelist (`create_simulated_transaction`, `get_account_balance`, etc.).
+  - Scans tool parameters for command injection metacharacters (`;`, `|`, `&&`, `$()`, backticks).
+  - Enforces domain invariant checks (e.g., `destination_account` cannot equal `source_account`, amount must be positive number).
+- **Stage 4: Output Guardrail (`security/guardrails/output_guardrail.py`)**:
+  - Evaluates final responses before delivery to the client.
+  - Detects and automatically redacts sensitive data: 16-digit Primary Account Numbers (PANs), API keys, JWTs, and passwords.
+  - Redacts sensitive patterns with `[REDACTED_SENSITIVE_DATA]`.
+  - Scans for system prompt leaks and canary tokens.
 
 ---
 

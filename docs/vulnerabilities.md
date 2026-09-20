@@ -4,20 +4,20 @@ This document provides technical descriptions, attack vectors, simulations, and 
 
 ---
 
-## Matrix of Scenarios
+## Matrix of Scenarios & Implementation Status
 
-| ID | Name | Core Risk | VulNet Simulation | Primary Mitigation |
-| :--- | :--- | :--- | :--- | :--- |
-| **ASI01** | **Agent Goal Hijack** | Direct/Indirect Prompt Injection | Overriding active goal via prompt or poisoned RAG | Goal Anchoring & Perimeter Regex |
-| **ASI02** | **Tool Misuse** | Dangerous arguments / Tool injection | Injected shell metacharacters in tool parameters | Parameter Schema & Whitelisting |
-| **ASI03** | **Identity & Privilege Abuse** | Privilege Escalation / Impersonation | Low-privileged role invoking Admin tool | Hierarchical RBAC & Session Binding |
-| **ASI04** | **Supply Chain** | Compromised 3rd-party tools/plugins | Loading unverified package with mismatched hash | Cryptographic SHA-256 Pinning |
-| **ASI05** | **Unexpected Code Execution** | Remote Code Execution via eval/exec | Unsanitized Python script with `os.system` | Abstract Syntax Tree (AST) Validation |
-| **ASI06** | **Memory Poisoning** | Contaminating persistent state/memory | Malicious endpoint override injected into store | Memory Write Quarantine & Policy Bounds |
-| **ASI07** | **Insecure Inter-Agent Comm** | Message Spoofing & Forged Delegation | Unsigned message impersonating Research Agent | Cryptographic HMAC-SHA256 Signatures |
-| **ASI08** | **Cascading Failures** | Error amplification / Crash loops | Unhandled exception collapsing pipeline | Circuit Breakers & Graceful Degradation |
-| **ASI09** | **Human Trust Exploitation** | Deceptive summaries / Blind approval | Harmless summary masking critical policy drop | Transparent Action Diffs & Discrepancy Auditing |
-| **ASI10** | **Rogue Agents** | Unbounded sub-agents / runaway loops | Autonomous agent spawning 12 workers | Hard Lifecycle Quotas & Governance Clamping |
+| ID | Name | Core Risk | VulNet Simulation | Primary Mitigation | Verified V3 Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **ASI01** | **Agent Goal Hijack** | Direct/Indirect Prompt Injection | Overriding active goal via prompt or poisoned RAG | InputGuardrail, RAGGuardrail, Goal Anchoring | ✅ **LIVE IMPLEMENTED** (Full pipeline, Chatbot, RAG & API) |
+| **ASI02** | **Tool Misuse** | Dangerous arguments / Tool injection | Injected shell metacharacters in tool parameters | ToolGuardrail, Parameter Schema & Whitelisting | 🛡️ **DEFENSE IMPLEMENTED** (ToolGuardrail & MCP Validation live) |
+| **ASI03** | **Identity & Privilege Abuse** | Privilege Escalation / Impersonation | Low-privileged role invoking Admin tool or accessing other accounts | Hierarchical RBAC, BOLA Ownership & Session Binding | ✅ **LIVE IMPLEMENTED** (AuthManager, RBAC, Account BOLA Defense) |
+| **ASI04** | **Supply Chain** | Compromised 3rd-party tools/plugins | Loading unverified package with mismatched hash | Cryptographic SHA-256 Pinning | 🧪 **SIMULATED / LAB SUITE** (Modeled in Scenario Explorer) |
+| **ASI05** | **Unexpected Code Execution** | Remote Code Execution via eval/exec | Unsanitized Python script with `os.system` | Abstract Syntax Tree (AST) Validation | 🧪 **SIMULATED / LAB SUITE** (Modeled in Scenario Explorer) |
+| **ASI06** | **Memory Poisoning** | Contaminating persistent state/memory | Malicious endpoint override injected into store | MemoryValidator quarantine & Policy Bounds | 🛡️ **DEFENSE IMPLEMENTED** (Live in SessionManager memory) |
+| **ASI07** | **Insecure Inter-Agent Comm** | Message Spoofing & Forged Delegation | Unsigned message impersonating Research Agent | Cryptographic HMAC-SHA256 Signatures | 🧪 **SIMULATED / LAB SUITE** (Modeled in Scenario Explorer) |
+| **ASI08** | **Cascading Failures** | Error amplification / Crash loops | Unhandled exception collapsing pipeline | Circuit Breakers & Graceful Degradation | ✅ **LIVE IMPLEMENTED** (Active in Orchestrator & Ollama fallback) |
+| **ASI09** | **Human Trust Exploitation** | Deceptive summaries / Blind approval | Harmless summary masking critical policy drop | Human Approval Gate ($10k+) & Parameter Diffs | 🛡️ **DEFENSE IMPLEMENTED** (Human approval live, UI diff simulated) |
+| **ASI10** | **Rogue Agents** | Unbounded sub-agents / runaway loops | Autonomous agent spawning excessive workers | Hard Lifecycle Quotas & Governance Clamping | 🧪 **SIMULATED / LAB SUITE** (Modeled in Scenario Explorer) |
 
 ---
 

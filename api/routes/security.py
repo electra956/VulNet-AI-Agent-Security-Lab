@@ -48,6 +48,19 @@ def evaluate_security_prompt(request: SecurityEvaluateRequest) -> SecurityEvalua
 
         eval_res = controller.evaluate_request(request.request_text, session_context=session_ctx)
 
+        # Layered inspection via InputGuardrail
+        from security.guardrails.input_guardrail import InputGuardrail
+        from security.guardrails.models import GuardrailDecision
+        input_guard = InputGuardrail(mode=mode)
+        guard_res = input_guard.inspect(request.request_text, request_id=req_id)
+        if guard_res.decision == GuardrailDecision.BLOCK:
+            eval_res["blocked"] = True
+            eval_res["allowed"] = False
+            eval_res["decision"] = "BLOCK"
+            eval_res["scenario"] = eval_res.get("scenario") or "ASI01 - Agent Goal Hijack"
+            eval_res["reason"] = eval_res.get("reason") or guard_res.reason
+            eval_res["detected_pattern"] = eval_res.get("detected_pattern") or (guard_res.matched_rules[0] if guard_res.matched_rules else "ASI01 - Agent Goal Hijack")
+
         blocked = eval_res.get("blocked", False) or eval_res.get("decision") == "BLOCK"
         allowed = eval_res.get("allowed", not blocked)
         decision = eval_res.get("decision") or ("BLOCK" if blocked else "ALLOW")

@@ -18,19 +18,17 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+from rag.vector_store import PersistentVectorStore, LocalDenseEmbedder, cosine_similarity_vectors
+
 
 class RAGEngine:
     """
-    Production-style FinTech RAG Engine with deterministic security boundaries.
+    Production-style FinTech RAG Engine with deterministic security boundaries
+    and persistent local vector database integration.
 
     Pipeline:
-    Document Ingestion -> Chunking -> Metadata -> Retrieval -> Relevance Filtering
-    -> Trust Evaluation -> Context Builder
-
-    CRITICAL SECURITY INVARIANT:
-    - Retrieved content is DATA, never executable instructions.
-    - Untrusted documents (e.g. user-uploaded attachments, external third-party feeds)
-      are strictly quarantined and neutralized to prevent RAG poisoning and goal hijacking.
+    Document Ingestion -> Chunking -> Metadata -> Dense Vector Embeddings -> Persistent Vector Store
+    -> Retrieval -> Relevance Filtering -> Trust Evaluation -> Context Builder
     """
 
     SUSPICIOUS_PATTERNS = [
@@ -48,9 +46,16 @@ class RAGEngine:
         r"export the complete customer database"
     ]
 
-    def __init__(self, knowledge_path: str = "rag/knowledge", security_controller: Optional[Any] = None):
+    def __init__(
+        self,
+        knowledge_path: str = "rag/knowledge",
+        security_controller: Optional[Any] = None,
+        vector_store_path: str = "data/vector_store.json"
+    ):
         self.knowledge_path = Path(knowledge_path)
         self.security_controller = security_controller
+        self.vector_store = PersistentVectorStore(persist_path=vector_store_path)
+        self.dense_embedder = LocalDenseEmbedder()
 
         self.documents: List[str] = []
         self.chunks: List[Dict[str, Any]] = []
@@ -105,7 +110,8 @@ class RAGEngine:
     ) -> List[Dict[str, Any]]:
         """
         Split document content into semantic paragraphs/sections and assign structured metadata.
-        Every chunk carries: source, document_type, trust_level, created_at, chunk_id.
+        Every chunk carries: document_id, source, document_type, title, version, trust_level,
+        created_at, owner, sensitivity, chunk_id.
         """
         doc_type = self._classify_document_type(filename)
         trust_level = self._classify_trust(filename)
@@ -136,23 +142,41 @@ class RAGEngine:
             if curr_chunk:
                 raw_sections.append("\n\n".join(curr_chunk))
 
+        title = filename.replace("_", " ").replace(".txt", "").title()
+        owner = "Risk & Compliance Committee" if trust_level == "TRUSTED_INTERNAL" else "External / User"
+        sensitivity = "INTERNAL_CONFIDENTIAL" if trust_level == "TRUSTED_INTERNAL" else "UNTRUSTED_INGEST"
+
         chunk_list = []
         for idx, sec in enumerate(raw_sections):
             chunk_id = f"{filename}#c{idx + 1}"
-            chunk_list.append({
+            chunk_record = {
                 "chunk_id": chunk_id,
                 "chunk_index": idx,
+                "document_id": f"DOC-{filename.upper().replace('.TXT', '')}",
                 "source": filename,
                 "document": filename,  # Backward compatibility
+                "title": title,
+                "version": "1.0",
                 "document_type": doc_type,
                 "trust_level": trust_level,
                 "trust_classification": trust_level,  # Backward compatibility
                 "is_trusted": (trust_level == "TRUSTED_INTERNAL"),
+                "owner": owner,
+                "sensitivity": sensitivity,
                 "created_at": created_at,
                 "content": sec,
                 "raw_content": sec,
                 "doc_security": doc_sec
-            })
+            }
+            chunk_list.append(chunk_record)
+
+            # Sync to persistent vector store with dense embedding
+            if hasattr(self, "vector_store") and self.vector_store is not None:
+                self.vector_store.add_record(
+                    chunk_id=chunk_id,
+                    content=sec,
+                    metadata=chunk_record
+                )
 
         return chunk_list
 
@@ -180,6 +204,9 @@ class RAGEngine:
 
         if self.chunk_texts:
             self.vectors = self.vectorizer.fit_transform(self.chunk_texts)
+
+        if hasattr(self, "vector_store") and self.vector_store is not None:
+            self.vector_store.save()
 
     def ingest_document(
         self,
@@ -344,11 +371,16 @@ class RAGEngine:
 
             results.append({
                 "chunk_id": chunk_id,
+                "document_id": chunk.get("document_id", f"DOC-{doc_name.upper().replace('.TXT', '')}"),
                 "document": doc_name,
                 "source": doc_name,
+                "title": chunk.get("title", doc_name.replace("_", " ").title()),
+                "version": chunk.get("version", "1.0"),
                 "document_type": doc_type,
                 "trust_level": trust,
                 "trust_classification": trust,
+                "owner": chunk.get("owner", "Risk & Compliance Committee"),
+                "sensitivity": chunk.get("sensitivity", "INTERNAL_CONFIDENTIAL"),
                 "created_at": created_at,
                 "is_trusted": (trust == "TRUSTED_INTERNAL"),
                 "is_safe": is_safe,
@@ -362,6 +394,26 @@ class RAGEngine:
                 break
 
         return results
+
+    def search_with_metadata(
+        self,
+        query: str,
+        top_k: int = 3,
+        min_score: float = 0.05
+    ) -> Dict[str, Any]:
+        """
+        Execute vector search and return structured retrieval metadata contract:
+        query, retrieved_chunks, scores, sources, trust_levels.
+        """
+        chunks = self.search(query=query, top_k=top_k, min_score=min_score)
+        return {
+            "query": query,
+            "retrieved_chunks": chunks,
+            "scores": [c["score"] for c in chunks],
+            "sources": [c["source"] for c in chunks],
+            "trust_levels": [c["trust_level"] for c in chunks],
+            "count": len(chunks)
+        }
 
     # =========================================================================
     # 5. CONTEXT BUILDER (DATA VS INSTRUCTION BOUNDARY)
@@ -410,3 +462,14 @@ class RAGEngine:
         context_blocks.append("<!-- END RETRIEVED REFERENCE DATA -->")
 
         return "\n".join(context_blocks)
+
+
+_cached_rag_engine: Optional[RAGEngine] = None
+
+
+def get_rag_engine(knowledge_path: str = "rag/knowledge") -> RAGEngine:
+    """Retrieve or initialize the singleton RAGEngine instance."""
+    global _cached_rag_engine
+    if _cached_rag_engine is None:
+        _cached_rag_engine = RAGEngine(knowledge_path=knowledge_path)
+    return _cached_rag_engine

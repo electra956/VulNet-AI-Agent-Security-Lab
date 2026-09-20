@@ -35,3 +35,7 @@ reports/*.tmp
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Local database & state files
+data/
+logs/*.jsonl

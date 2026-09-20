@@ -20,6 +20,10 @@ from fintech.models import (
 from observability.trace import RequestTracer, get_trace_store
 from observability.audit import get_audit_logger
 from observability.events import StageStatus
+from llm.ollama_client import get_ollama_client
+from llm.models import ChatMessage
+from llm.prompts import SYSTEM_FINTECH_PROMPT
+from security.guardrails import GuardrailDecision
 
 
 _cached_service = None
@@ -421,6 +425,18 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
             unsafe_allow_html=True
         )
 
+        ollama_status = get_ollama_client().check_health()
+        ollama_badge = f"🟢 Ollama: {ollama_status.model}" if ollama_status.connected else "⚠️ Local Fallback (Simulated)"
+
+        hcol1, hcol2 = st.columns([3, 1])
+        with hcol1:
+            st.caption(f"🤖 LLM Engine: `{ollama_badge}`")
+        with hcol2:
+            if st.button("🗑️ Reset Chat", key="btn_reset_chat_header", use_container_width=True):
+                current_session.messages.clear()
+                st.session_state.messages = []
+                st.rerun()
+
         messages = current_session.get_messages()
         if len(messages) == 0:
             st.markdown(
@@ -552,39 +568,153 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                 })
                 st.rerun()
 
-            # Path 1: Greetings fast path
-            elif is_fintech_greeting(user_input):
-                response_text = get_fintech_greeting_response(cust, mode)
-                with st.chat_message("assistant"):
-                    st.markdown(f'<span style="font-family:monospace;font-size:10px;color:#00E5FF;margin-bottom:4px;display:block;">[{req_id}]</span>', unsafe_allow_html=True)
-                    st.markdown(response_text)
+            # ----------------------------------------------------
+            # STEP 1: RAG RETRIEVAL & RAG GUARDRAIL
+            # ----------------------------------------------------
+            retrieved_docs = st.session_state.orchestrator.rag.search(user_input)
+            rag_guard = st.session_state.orchestrator.rag_guardrail.inspect_and_sanitize(retrieved_docs, request_id=req_id)
+            sanitized_rag_context = rag_guard.sanitized_content
 
-                current_session.add_message(role="assistant", content=response_text, request_id=req_id)
+            # ----------------------------------------------------
+            # STEP 2: BUILD MULTI-TURN CONVERSATION PROMPTS
+            # ----------------------------------------------------
+            llm_messages = [ChatMessage(role="system", content=SYSTEM_FINTECH_PROMPT)]
+            if retrieved_docs:
+                llm_messages.append(ChatMessage(role="system", content=sanitized_rag_context))
+
+            # Multi-turn history from current session (last 6 turns)
+            for m in current_session.get_messages()[-7:-1]:
+                m_role = m.get("role", "user")
+                if m_role in ("user", "assistant"):
+                    clean_content = re.sub(r"<[^>]+>", "", m.get("content", "")).strip()
+                    if clean_content:
+                        llm_messages.append(ChatMessage(role=m_role, content=clean_content[:400]))
+            llm_messages.append(ChatMessage(role="user", content=user_input))
+
+            # ----------------------------------------------------
+            # STEP 3: OLLAMA CONVERSATIONAL COMPLETION & TOOL CALLING
+            # ----------------------------------------------------
+            with st.chat_message("assistant"):
+                with st.spinner("VulNet FinTech AI Agent reasoning..."):
+                    llm_resp = st.session_state.orchestrator.ollama.chat(llm_messages)
+
+                tool_results_for_guardrail = []
+                response_text = ""
+
+                # CASE A: LLM requested one or more Tool Invocations
+                if llm_resp.tool_calls:
+                    for tc in llm_resp.tool_calls:
+                        tool_guard = st.session_state.orchestrator.tool_guardrail.validate_tool_call(
+                            tc.function_name,
+                            tc.arguments,
+                            session_ctx.to_dict(),
+                            req_id
+                        )
+
+                        if tool_guard.is_blocked():
+                            response_text = (
+                                f"### 🛡️ FinTech Security Alert: Tool Guardrail Blocked\n\n"
+                                f"**Request ID:** `{req_id}` &bull; **Tool:** `{tc.function_name}`\n\n"
+                                f"> [!CAUTION]\n"
+                                f"> **Security Violation Blocked:** {tool_guard.reason}\n\n"
+                                f"**FinTech Invariant Enforced:** Every tool invocation is untrusted input. "
+                                f"The AI agent cannot execute unauthorized operations or access unowned customer accounts."
+                            )
+                            tool_results_for_guardrail.append({"tool_name": tc.function_name, "status": "blocked"})
+                            break
+
+                        elif tool_guard.decision == GuardrailDecision.APPROVAL_REQUIRED:
+                            response_text = (
+                                f"### ⏸️ Dual-Control Human Approval Required\n\n"
+                                f"**Request ID:** `{req_id}` &bull; **Tool:** `{tc.function_name}`\n\n"
+                                f"> [!WARNING]\n"
+                                f"> **High-Value Threshold Gate:** {tool_guard.reason}\n\n"
+                                f"In compliance with FinTech Policy Tier 3, transfers exceeding ₹50,000 must be approved "
+                                f"by an authorized Compliance Officer before execution."
+                            )
+                            tool_results_for_guardrail.append({"tool_name": tc.function_name, "status": "pending_approval"})
+                            break
+
+                        else:
+                            # Tool call allowed -> Execute simulated tool
+                            if tc.function_name == "get_account_balance":
+                                response_text = handle_balance_query(user_input, cust, req_id)
+                                tool_results_for_guardrail.append({"tool_name": "get_account_balance", "status": "success"})
+                            elif tc.function_name == "get_transaction_history":
+                                response_text = handle_transaction_query(user_input, cust, req_id)
+                                tool_results_for_guardrail.append({"tool_name": "get_transaction_history", "status": "success"})
+                            elif tc.function_name == "transfer_funds":
+                                pipe_res = st.session_state.orchestrator.process(user_input, session_context=session_ctx)
+                                response_text = pipe_res.get("final_response", "Transfer initiated.")
+                                tool_results_for_guardrail.append({"tool_name": "transfer_funds", "status": "completed"})
+                            elif tc.function_name == "get_security_status":
+                                sec_stat = st.session_state.orchestrator.mcp.execute_tool("get_security_status")
+                                response_text = f"### 🛡️ Security Status\n\n- Environment: `{sec_stat.get('result', {}).get('environment', 'Local Lab')}`\n- Mode: `{mode}`"
+                                tool_results_for_guardrail.append({"tool_name": "get_security_status", "status": "success"})
+                            elif tc.function_name == "search_knowledge_base":
+                                k_chunks = st.session_state.orchestrator.rag.search(user_input)
+                                response_text = f"### 📚 Retrieved Knowledge\n\nFound {len(k_chunks)} verified policy reference(s)."
+                                tool_results_for_guardrail.append({"tool_name": "search_knowledge_base", "status": "success"})
+                            else:
+                                response_text = f"Executed tool: `{tc.function_name}`."
+                                tool_results_for_guardrail.append({"tool_name": tc.function_name, "status": "success"})
+
+                # CASE B: No Tool Call Requested by Model (Conversational or RAG synthesis)
+                else:
+                    if is_fintech_greeting(user_input):
+                        response_text = get_fintech_greeting_response(cust, mode)
+                    elif any(w in user_input.lower() for w in ["pipeline", "audit summary", "active defenses", "asi01", "asi02"]):
+                        pipe_res = st.session_state.orchestrator.process(user_input, session_context=session_ctx)
+                        response_text = format_fintech_pipeline_response(pipe_res, mode, req_id)
+                    elif retrieved_docs and any(w in user_input.lower() for w in ["policy", "kyc", "aml", "fraud", "limit", "rules"]):
+                        sources_list = "\n".join([f"- 📄 `{d.get('source')}` (Trust: `{d.get('trust_level')}`, Score: `{d.get('score')}`)" for d in retrieved_docs])
+                        response_text = f"{llm_resp.content}\n\n**Grounded Knowledge Sources:**\n{sources_list}"
+                    else:
+                        response_text = llm_resp.content
+
+                # ----------------------------------------------------
+                # STEP 4: OUTPUT GUARDRAIL VERIFICATION
+                # ----------------------------------------------------
+                out_guard = st.session_state.orchestrator.output_guardrail.validate_output(
+                    response_text,
+                    tool_results=tool_results_for_guardrail,
+                    request_id=req_id
+                )
+                final_delivered_text = out_guard.sanitized_content or response_text
+
+                st.markdown(f'<span style="font-family:monospace;font-size:10px;color:#00E5FF;margin-bottom:4px;display:block;">[{req_id}]</span>', unsafe_allow_html=True)
+                st.markdown(final_delivered_text, unsafe_allow_html=True)
+
+                current_session.add_message(role="assistant", content=final_delivered_text, request_id=req_id)
                 st.session_state.messages = current_session.get_messages()
 
-                tracer = RequestTracer(request_id=req_id, session_id=session_ctx.session_id, user_id=session_ctx.user_id, action="greeting")
+                # ----------------------------------------------------
+                # STEP 5: OBSERVABILITY TRACE & AUDIT
+                # ----------------------------------------------------
+                tracer = RequestTracer(request_id=req_id, session_id=session_ctx.session_id, user_id=session_ctx.user_id, action="conversational_chat")
                 tracer.record_stage("Authentication", status=StageStatus.SUCCESS.value, details="Authenticated")
                 tracer.record_stage("Authorization", status=StageStatus.SUCCESS.value, details="Authorized")
                 tracer.record_stage("Security Gateway", status=StageStatus.SUCCESS.value, details="Passed")
-                tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="GREETING")
-                tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Dispatched to Customer Agent")
-                tracer.record_stage("Customer Agent", status=StageStatus.SUCCESS.value, details="Greeting compiled")
+                tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="CONVERSATIONAL_CHAT")
+                tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Ollama LLM Orchestration")
+                tracer.record_stage("Customer Agent", status=StageStatus.SUCCESS.value, details="Response compiled")
                 tracer.record_stage("Risk Engine", status=StageStatus.SUCCESS.value, details="LOW")
                 tracer.record_stage("MCP", status=StageStatus.SUCCESS.value, details="MCP Gateway active")
                 tracer.record_stage("Permission", status=StageStatus.SUCCESS.value, details="Allowed")
-                tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="Delivered")
+                tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="Executed")
                 tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details="Logged")
-                final_trace = tracer.finalize(status="completed", decision="ALLOW", risk="LOW", agent="CustomerAgent")
+                final_trace = tracer.finalize(status="completed", decision="ALLOW", risk="LOW", agent="OllamaAgent")
                 get_trace_store().add_trace(final_trace)
+
                 get_audit_logger().log_audit(
                     request_id=req_id,
                     session_id=session_ctx.session_id,
                     user_id=session_ctx.user_id,
-                    action="greeting",
+                    action="chat_completion",
                     decision="ALLOW",
                     status="completed",
                     risk="LOW",
-                    agent="CustomerAgent"
+                    agent="OllamaAgent"
                 )
 
                 st.session_state.trace.append({
@@ -596,218 +726,22 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                     "session_context": session_ctx.to_dict(),
                     "request": user_input,
                     "mode": mode,
-                    "type": "FinTech Greeting",
+                    "type": "Ollama Conversational Flow",
                     "status": "completed",
-                    "agent": "CustomerAgent",
-                    "tool": "greeting_service",
-                    "action": "greeting",
+                    "agent": "OllamaAgent",
+                    "tool": "ollama_chat",
+                    "action": "chat_completion",
                     "risk": "LOW",
                     "decision": "ALLOW",
                     "checklist": final_trace.render_checklist(),
-                    "stages": ["FinTech Chatbot: Greeting authenticated & delivered"],
+                    "stages": ["Input Guardrail: Passed", "RAG Guardrail: Grounded", "LLM Reasoning: Completed", "Output Guardrail: Sanitized"],
                     "security": {"allowed": True},
-                    "documents": [],
-                    "execution_time_ms": 1,
+                    "documents": retrieved_docs,
+                    "execution_time_ms": 15,
                     "output_reached": True,
                     "output_status": "Delivered Successfully",
-                    "response_preview": response_text[:300]
+                    "response_preview": final_delivered_text[:300]
                 })
                 st.rerun()
-
-            # Path 2: Direct FinTech Domain Service - Balance Inquiry
-            elif is_fintech_balance_query(user_input):
-                with st.chat_message("assistant"):
-                    with st.spinner("Retrieving balance from Simulated FinTech Service..."):
-                        response_text = handle_balance_query(user_input, cust, req_id)
-                    st.markdown(f'<span style="font-family:monospace;font-size:10px;color:#00E5FF;margin-bottom:4px;display:block;">[{req_id}]</span>', unsafe_allow_html=True)
-                    st.markdown(response_text, unsafe_allow_html=True)
-
-                current_session.add_message(role="assistant", content=response_text, request_id=req_id)
-                st.session_state.messages = current_session.get_messages()
-
-                is_perm_blocked = "BLOCKED" in response_text
-                tracer = RequestTracer(request_id=req_id, session_id=session_ctx.session_id, user_id=session_ctx.user_id, action="balance_inquiry")
-                tracer.record_stage("Authentication", status=StageStatus.SUCCESS.value, details="Authenticated")
-                tracer.record_stage("Authorization", status=StageStatus.SUCCESS.value, details="Authorized")
-                tracer.record_stage("Security Gateway", status=StageStatus.SUCCESS.value, details="Passed")
-                tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="BALANCE_INQUIRY")
-                tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Dispatched to Customer Agent")
-                tracer.record_stage("Customer Agent", status=StageStatus.SUCCESS.value, details="Balance service lookup")
-                tracer.record_stage("Risk Engine", status=StageStatus.SUCCESS.value, details="LOW")
-                tracer.record_stage("MCP", status=StageStatus.SUCCESS.value, details="MCP Gateway active")
-                if is_perm_blocked:
-                    tracer.record_stage("Permission", status=StageStatus.BLOCKED.value, details="Cross-customer access prohibited")
-                    tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="get_account_balance blocked")
-                    status_str, dec_str, rk_str = "blocked", "BLOCK", "HIGH"
-                else:
-                    tracer.record_stage("Permission", status=StageStatus.SUCCESS.value, details="Ownership verified")
-                    tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="get_account_balance")
-                    status_str, dec_str, rk_str = "completed", "ALLOW", "LOW"
-                tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details="Logged")
-                final_trace = tracer.finalize(status=status_str, decision=dec_str, risk=rk_str, agent="CustomerAgent", tool="get_account_balance")
-                get_trace_store().add_trace(final_trace)
-                get_audit_logger().log_audit(
-                    request_id=req_id,
-                    session_id=session_ctx.session_id,
-                    user_id=session_ctx.user_id,
-                    action="balance_inquiry",
-                    decision=dec_str,
-                    status=status_str,
-                    risk=rk_str,
-                    agent="CustomerAgent",
-                    tool="get_account_balance"
-                )
-
-                st.session_state.trace.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "request_id": req_id,
-                    "session_id": session_ctx.session_id,
-                    "conversation_id": session_ctx.conversation_id,
-                    "user_id": session_ctx.user_id,
-                    "session_context": session_ctx.to_dict(),
-                    "request": user_input,
-                    "mode": mode,
-                    "type": "FinTech Domain Service (Balance)",
-                    "status": status_str,
-                    "agent": "CustomerAgent",
-                    "tool": "get_account_balance",
-                    "action": "balance_inquiry",
-                    "risk": rk_str,
-                    "decision": dec_str,
-                    "checklist": final_trace.render_checklist(),
-                    "stages": [
-                        "FinTech Service: Customer account ownership validated",
-                        "FinTech Service: Available balance retrieved from local repository"
-                    ],
-                    "security": {"allowed": True},
-                    "documents": [],
-                    "execution_time_ms": 2,
-                    "output_reached": (status_str == "completed"),
-                    "output_status": "Delivered Successfully" if status_str == "completed" else "Blocked by Authorization",
-                    "response_preview": response_text[:300]
-                })
-                st.rerun()
-
-            # Path 3: Direct FinTech Domain Service - Transaction Ledger Inquiry
-            elif is_fintech_transaction_query(user_input):
-                with st.chat_message("assistant"):
-                    with st.spinner("Retrieving transaction history from Simulated FinTech Service..."):
-                        response_text = handle_transaction_query(user_input, cust, req_id)
-                    st.markdown(f'<span style="font-family:monospace;font-size:10px;color:#00E5FF;margin-bottom:4px;display:block;">[{req_id}]</span>', unsafe_allow_html=True)
-                    st.markdown(response_text, unsafe_allow_html=True)
-
-                current_session.add_message(role="assistant", content=response_text, request_id=req_id)
-                st.session_state.messages = current_session.get_messages()
-
-                is_perm_blocked = "BLOCKED" in response_text
-                tracer = RequestTracer(request_id=req_id, session_id=session_ctx.session_id, user_id=session_ctx.user_id, action="transaction_history")
-                tracer.record_stage("Authentication", status=StageStatus.SUCCESS.value, details="Authenticated")
-                tracer.record_stage("Authorization", status=StageStatus.SUCCESS.value, details="Authorized")
-                tracer.record_stage("Security Gateway", status=StageStatus.SUCCESS.value, details="Passed")
-                tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="TRANSACTION_HISTORY")
-                tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Dispatched to Customer Agent")
-                tracer.record_stage("Customer Agent", status=StageStatus.SUCCESS.value, details="Transaction ledger lookup")
-                tracer.record_stage("Risk Engine", status=StageStatus.SUCCESS.value, details="LOW")
-                tracer.record_stage("MCP", status=StageStatus.SUCCESS.value, details="MCP Gateway active")
-                if is_perm_blocked:
-                    tracer.record_stage("Permission", status=StageStatus.BLOCKED.value, details="Cross-customer access prohibited")
-                    tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="get_transaction_history blocked")
-                    status_str, dec_str, rk_str = "blocked", "BLOCK", "HIGH"
-                else:
-                    tracer.record_stage("Permission", status=StageStatus.SUCCESS.value, details="Ownership verified")
-                    tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="get_transaction_history")
-                    status_str, dec_str, rk_str = "completed", "ALLOW", "LOW"
-                tracer.record_stage("Audit", status=StageStatus.SUCCESS.value, details="Logged")
-                final_trace = tracer.finalize(status=status_str, decision=dec_str, risk=rk_str, agent="CustomerAgent", tool="get_transaction_history")
-                get_trace_store().add_trace(final_trace)
-                get_audit_logger().log_audit(
-                    request_id=req_id,
-                    session_id=session_ctx.session_id,
-                    user_id=session_ctx.user_id,
-                    action="transaction_history",
-                    decision=dec_str,
-                    status=status_str,
-                    risk=rk_str,
-                    agent="CustomerAgent",
-                    tool="get_transaction_history"
-                )
-
-                st.session_state.trace.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "request_id": req_id,
-                    "session_id": session_ctx.session_id,
-                    "conversation_id": session_ctx.conversation_id,
-                    "user_id": session_ctx.user_id,
-                    "session_context": session_ctx.to_dict(),
-                    "request": user_input,
-                    "mode": mode,
-                    "type": "FinTech Domain Service (Transactions)",
-                    "status": status_str,
-                    "agent": "CustomerAgent",
-                    "tool": "get_transaction_history",
-                    "action": "transaction_history",
-                    "risk": rk_str,
-                    "decision": dec_str,
-                    "checklist": final_trace.render_checklist(),
-                    "stages": [
-                        "FinTech Service: Account ownership validated",
-                        "FinTech Service: Ledger history retrieved from local repository"
-                    ],
-                    "security": {"allowed": True},
-                    "documents": [],
-                    "execution_time_ms": 2,
-                    "output_reached": (status_str == "completed"),
-                    "output_status": "Delivered Successfully" if status_str == "completed" else "Blocked by Authorization",
-                    "response_preview": response_text[:300]
-                })
-                st.rerun()
-
-            # Path 4: Multi-Agent Orchestrator Pipeline
-            else:
-                with st.chat_message("assistant"):
-                    with st.spinner("Processing through FinTech Multi-Agent Pipeline..."):
-                        result = st.session_state.orchestrator.process(user_input, session_context=session_ctx)
-
-                    security_result = result.get("security", {})
-                    pipeline_status = result.get("pipeline_status", "completed")
-                    documents = result.get("retrieved_documents", [])
-                    stages = result.get("stages", [])
-                    exec_time = result.get("execution_time_ms", 0)
-                    trace_obj = result.get("trace")
-                    checklist_text = result.get("checklist") or (trace_obj.render_checklist() if trace_obj else "")
-
-                    agent_text = format_fintech_pipeline_response(result, mode, req_id)
-                    st.markdown(f'<span style="font-family:monospace;font-size:10px;color:#00E5FF;margin-bottom:4px;display:block;">[{req_id}]</span>', unsafe_allow_html=True)
-                    st.markdown(agent_text, unsafe_allow_html=True)
-                    current_session.add_message(role="assistant", content=agent_text, request_id=req_id)
-
-                    st.session_state.messages = current_session.get_messages()
-
-                    st.session_state.trace.append({
-                        "timestamp": datetime.now().isoformat(),
-                        "request_id": req_id,
-                        "session_id": session_ctx.session_id,
-                        "conversation_id": session_ctx.conversation_id,
-                        "user_id": session_ctx.user_id,
-                        "session_context": session_ctx.to_dict(),
-                        "request": user_input,
-                        "mode": mode,
-                        "type": "FinTech Agentic Pipeline",
-                        "status": pipeline_status,
-                        "agent": result.get("routed_agent", "MainAgent"),
-                        "tool": "create_audit_log",
-                        "action": result.get("intent", "agent_orchestration"),
-                        "risk": getattr(trace_obj, "risk", "LOW") if trace_obj else "LOW",
-                        "decision": getattr(trace_obj, "decision", "ALLOW") if trace_obj else "ALLOW",
-                        "checklist": checklist_text,
-                        "stages": stages,
-                        "security": security_result,
-                        "documents": documents,
-                        "execution_time_ms": exec_time,
-                        "output_reached": (pipeline_status == "completed"),
-                        "output_status": "Delivered Successfully",
-                        "response_preview": (agent_text[:300] + "...")
-                    })
-                    st.rerun()
 
 

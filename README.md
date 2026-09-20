@@ -59,8 +59,11 @@ The project focuses on:
 - 📊 **Security Event Telemetry**: Correlated audit logs, timeline profiling, and event tracing.
 - 🛡️ **FinTech RBAC & Authorization**: Strict permissions and resource ownership validation outside the LLM.
 - 🛡️ **AI Security Gateway**: Deterministic pre-agent perimeter with validation, threat detection, policy, and risk evaluation.
-- 🧠 **FinTech Agent Memory Subsystem**: Partitioned conversation, user preference, and session context memory with strict anti-authorization validation (ASI06 defense).
-- 🧪 **Comprehensive Testing**: 197 automated tests with 100% pass rate.
+- 🛡️ **Layered Guardrails Middleware**: Modular Input, RAG, Tool, and Output guardrails with deterministic financial invariants.
+- 🦙 **Real Local LLM Engine (Ollama)**: Local multi-turn conversational agent with offline fallback simulation and structured tool calling.
+- 📐 **Real Dense Vector RAG**: Persistent SQLite/JSON vector store with 128-dimensional dense embeddings and cosine similarity search.
+- 🧪 **Comprehensive Testing**: 354 automated tests with 100% pass rate across 36 test suites, including automated prompt injection and canary exfiltration regression suites.
+- 🎯 **Automated Prompt Injection Testing**: Deterministic security evaluation harness (`security_tests/`) covering direct injection, indirect RAG poisoning, tool parameter manipulation, and secret exfiltration mapped to OWASP ASI01–ASI10.
 
 ---
 
@@ -405,9 +408,48 @@ Security properties include:
 ```text
 Production Access : False
 Network Access    : False
-Credentials Used  : False
-Simulation Mode   : True
-```
+## 🦙 Real Local Conversational LLM Engine (`llm/`)
+The lab provides a modular, production-style LLM client interface (`llm/`):
+- **Ollama Integration (`llm/ollama_client.py`)**: Asynchronous/synchronous HTTP client (`httpx`) connecting to local Ollama instances (`http://127.0.0.1:11434` or custom `OLLAMA_BASE_URL`).
+- **Resilient Offline Fallback Simulation**: When Ollama is offline or unavailable, the client seamlessly falls back to a deterministic FinTech dialogue and tool-calling simulator, ensuring test suites and offline environments execute with 100% fidelity.
+- **Pydantic Schemas (`llm/models.py`)**: Strictly typed schemas for `ChatMessage`, `ChatRequest`, `ChatResponse`, `ToolCallRequest`, `ToolDefinition`, and `LLMHealthStatus`.
+- **System Prompts & Boundaries (`llm/prompts.py`)**: System instructions establishing strict banking domain rules, explicit data boundaries, passive RAG handling, and prohibited tool claims.
+- **Environment Variables**:
+  - `OLLAMA_BASE_URL`: Base URL for local Ollama server (default: `http://localhost:11434` or `http://127.0.0.1:11434`).
+  - `OLLAMA_MODEL`: Target chat model (default: `llama3.2` or `mistral`).
+  - `OLLAMA_EMBED_MODEL`: Dense embedding model (default: `nomic-embed-text` or `all-minilm`).
+
+---
+
+## 📐 Persistent Vector Store & Dense Local RAG (`rag/`)
+Enhanced retrieval pipeline with real dense embeddings and persistent storage:
+- **Persistent Vector Store (`rag/vector_store.py`)**: Disk-backed vector storage with JSON and SQLite backends, saving chunk text, embeddings, and structured metadata.
+- **Dense Vector Embedder (`LocalDenseEmbedder`)**: Deterministic 128-dimensional dense vector embeddings with cosine similarity search. When Ollama is active, optionally leverages Ollama `/api/embeddings`.
+- **Rich Document Metadata**: Every knowledge chunk indexes `document_id`, `source`, `document_type`, `title`, `version`, `trust_level`, `owner`, `sensitivity`, `created_at`, and `chunk_id`.
+- **Passive RAG Data Boundaries**: Injected context is strictly wrapped in `<trusted_data>` or `<untrusted_data>` XML tags. The LLM is instructed that retrieved text contains passive reference data, never executable instructions.
+
+---
+
+## 🛡️ Layered Guardrails Middleware (`security/guardrails/`)
+A modular 4-stage defense-in-depth pipeline executing before and after LLM invocations:
+- **Input Guardrail (`security/guardrails/input_guardrail.py`)**:
+  - Detects and blocks prompt injection (ASI01), instruction overrides, prompt leakage requests, role manipulation, null bytes, and excessive payload sizes.
+  - Sanitizes user input before it reaches the LLM or agent orchestrator.
+- **RAG Guardrail (`security/guardrails/rag_guardrail.py`)**:
+  - Evaluates trust levels (`TRUSTED`, `INTERNAL`, `EXTERNAL`, `UNTRUSTED`).
+  - Quarantines and neutralizes untrusted sources (`[NEUTRALIZED_UNTRUSTED_INSTRUCTION]`).
+  - Enforces bounded XML data envelopes to prevent retrieved context from usurping system goals.
+- **Tool-Call Guardrail (`security/guardrails/tool_guardrail.py`)**:
+  - **Zero Trust Tool Calling**: Treats every tool call as untrusted input.
+  - **Whitelist Validation**: Rejects unapproved tool names.
+  - **Schema & Type Validation**: Validates parameters and argument types.
+  - **Customer Ownership (BOLA Prevention)**: Verifies caller owns the target account (`ACC-1001`, etc.).
+  - **RBAC Authorization**: Ensures customer role cannot invoke privileged administrative actions.
+  - **Financial Safety Invariant**: High-value transactions (> ₹50,000 / $10,000) return `APPROVAL_REQUIRED` requiring dual-control human confirmation.
+- **Output Guardrail (`security/guardrails/output_guardrail.py`)**:
+  - **PII & Credential Redaction**: Masks credit card numbers / PANs (`****-****-****-1234`), CVVs, passwords, and API keys.
+  - **System Prompt Leakage Prevention**: Intercepts and blocks responses exposing internal system prompts or hidden policies.
+  - **Unverified Tool Output Blocking**: Prevents the model from hallucinating or claiming a financial transaction succeeded when the tool returned an error or was never executed.
 
 ---
 
@@ -481,33 +523,47 @@ vulnerabilities/
 
 # 🧪 Testing
 
-The project contains deterministic unit and integration tests across all components, API endpoints, authentication flows, banking domains, and OWASP scenarios:
+The project contains **354 deterministic automated unit, integration, and security tests** across all components, API endpoints, authentication flows, banking domains, guardrails, and OWASP scenarios with a 100% pass rate.
 
-```text
-tests/
-├── test_action_agent.py          # Action execution, approval checks, high-risk constraints
-├── test_api.py                   # FastAPI endpoints, auth enforcement, headers, chat, accounts
-├── test_auth.py                  # Password hashing, MFA challenge-response, session tokens
-├── test_fintech_chatbot.py       # Chatbot view routing, UI state persistence, prompt handling
-├── test_fintech_domain.py        # Customer & account models, ownership invariants, transactions
-├── test_main_agent.py            # Goal extraction, invariant verification, drift detection
-├── test_mcp.py                   # Safe tools, RBAC authorization, parameter sanitization
-├── test_orchestrator.py          # Multi-agent pipeline end-to-end flow
-├── test_owasp_scenarios.py       # Full ASI01-ASI10 side-by-side Secure vs Vulnerable simulations
-├── test_quick_prompts.py         # Adversarial and benign quick prompts validation
-├── test_rag_manual.py            # TF-IDF relevance scoring, similarity thresholds, RAG defenses
-├── test_research_agent.py        # Context processing, command neutralization
-├── test_security_controller.py   # Heuristic signature matches, mode evaluation, telemetry
-├── test_security_pipeline.py     # Pipeline integration with Security Controller
-├── test_session_context.py       # Multi-tenant isolation, request correlation, state protection
-└── test_authorization.py         # FinTech RBAC matrix, resource ownership, ASI03 regression
-```
+### Automated Test Execution
 
-Run the complete 136-test suite with pytest:
+Run the complete test suite with pytest:
 
 ```bash
 pytest
 ```
+
+Run only the specialized prompt injection and security test suites:
+
+```bash
+pytest tests/security -v
+```
+
+---
+
+# 🎯 Prompt Injection Security Testing Module (`security_tests/`)
+
+An automated security test harness evaluating agent resilience against direct and indirect prompt injections without using real credentials or destructive actions:
+
+```bash
+# Run all prompt injection security tests via CLI
+python -m security_tests prompt-injection
+
+# Filter by attack category (direct, rag, tool, exfil, owasp)
+python -m security_tests prompt-injection --category direct
+python -m security_tests prompt-injection --category rag
+python -m security_tests prompt-injection --category tool
+python -m security_tests prompt-injection --category exfil
+python -m security_tests prompt-injection --category owasp
+
+# Output structured JSON report
+python -m security_tests prompt-injection --json > security_report.json
+
+# Enable verbose diagnostic trace logging
+python -m security_tests prompt-injection --verbose
+```
+
+For complete threat modeling, canary verification mechanics, and test suite specifications, see [Prompt Injection Security Testing Documentation](docs/prompt-injection-testing.md).
 
 ---
 
@@ -519,9 +575,10 @@ VulNet-AI-Agent-Security-Lab/
 ├── agents/                           # Multi-Agent Pipeline
 │   ├── __init__.py
 │   ├── main_agent.py                 # Intent & Goal extraction
+│   ├── orchestrator.py               # FinTech Agent Orchestrator
 │   ├── research_agent.py             # Context retrieval & synthesis
 │   ├── action_agent.py               # Safe execution boundaries
-│   └── orchestrator.py               # Multi-agent pipeline coordinator
+│   └── specialized_agents.py         # 6 Domain-tailored banking agents
 │
 ├── api/                              # FastAPI REST API Gateway (Backend)
 │   ├── __init__.py
@@ -565,6 +622,7 @@ VulNet-AI-Agent-Security-Lab/
 │   ├── architecture.md               # System architecture & component design
 │   ├── demo-guide.md                 # Interactive demonstration walkthrough
 │   ├── installation.md               # Setup & execution guide
+│   ├── prompt-injection-testing.md   # Automated Prompt Injection Testing Suite Guide
 │   ├── testing.md                    # Test suite execution & coverage guide
 │   ├── threat-model.md               # STRIDE threat model & attack surfaces
 │   └── vulnerabilities.md            # OWASP Top 10 ASI scenario specifications
@@ -575,40 +633,108 @@ VulNet-AI-Agent-Security-Lab/
 │   ├── repository.py                 # In-memory deterministic banking repository
 │   └── service.py                    # Banking operations & ownership invariants
 │
+├── llm/                              # Local LLM Integration & Prompts
+│   ├── __init__.py
+│   ├── models.py                     # LLM request/response Pydantic schemas
+│   ├── ollama_client.py              # Real Ollama client with offline fallback simulator
+│   └── prompts.py                    # System prompts and domain boundaries
+│
 ├── mcp_server/                       # Model Context Protocol (MCP) Server
 │   ├── __init__.py
 │   ├── server.py                     # Safe MCP tool server
-│   └── tools.py                      # RBAC-guarded demonstration tools
+│   ├── tools.py                      # RBAC-guarded demonstration tools
+│   └── fintech_tools.py              # Domain-specific banking tools
 │
-├── rag/                              # Retrieval-Augmented Generation
+├── memory/                           # Agent Memory Subsystem
 │   ├── __init__.py
-│   ├── rag_engine.py                 # TF-IDF cosine-similarity engine
-│   └── knowledge/                    # Local knowledge documents
-│       ├── company_policy.txt
-│       ├── test_context.txt
-│       └── untrusted_third_party.txt
+│   ├── conversation_memory.py        # Short-term conversation history
+│   ├── memory_store.py               # Partitioned thread-safe memory store
+│   ├── memory_validator.py           # Memory injection & authorization validator
+│   └── user_memory.py                # Long-term user preferences
 │
-├── security/                         # Security Controller & Event Telemetry
+├── rag/                              # Retrieval-Augmented Generation & Vector Store
 │   ├── __init__.py
-│   └── security_controller.py        # Signature detection & event tracking
+│   ├── rag_engine.py                 # TF-IDF & dense similarity engine
+│   ├── vector_store.py               # Persistent SQLite/JSON vector store with 128-d embeddings
+│   └── knowledge/                    # Local FinTech knowledge documents
 │
-├── tests/                            # Comprehensive Automated Test Suite (136 tests)
+├── security/                         # Security Controller, Gateway & Layered Guardrails
+│   ├── __init__.py
+│   ├── input_validator.py            # Input length, null-byte, and character sanitization
+│   ├── threat_detector.py            # OWASP ASI01-ASI10 regex & heuristic detector
+│   ├── policy_engine.py              # Domain-level FinTech policies
+│   ├── risk_engine.py                # Transaction & query risk scoring
+│   ├── security_controller.py        # Signature detection & event tracking
+│   ├── security_gateway.py           # Consolidated security gateway
+│   └── guardrails/                   # Layered Guardrails Middleware
+│       ├── __init__.py
+│       ├── input_guardrail.py        # Input inspection & Base64 decoding
+│       ├── rag_guardrail.py          # RAG context trust isolation & XML encapsulation
+│       ├── tool_guardrail.py         # Tool call schema, RBAC, and parameter validation
+│       └── output_guardrail.py       # PII redaction & system prompt leakage defense
+│
+├── security_tests/                   # Automated Prompt Injection Security Testing Framework
+│   ├── __init__.py                   # Package exports
+│   ├── __main__.py                   # Module entry point
+│   ├── cli.py                        # CLI argument parser & runner
+│   ├── engine.py                     # End-to-end security test execution engine
+│   ├── models.py                     # Test case & result data models
+│   ├── canaries.py                   # Synthetic canaries & leak detection
+│   ├── mock_tools.py                 # Safe in-memory mock tools & tracker
+│   └── suites/                       # Attack test case definitions
+│       ├── __init__.py
+│       ├── direct_injection.py       # 13 direct prompt injection test cases
+│       ├── indirect_rag_injection.py # 6 indirect RAG poisoning test cases
+│       ├── tool_mcp_injection.py     # 6 tool & MCP parameter injection test cases
+│       ├── secret_exfiltration.py    # 6 secret & token exfiltration test cases
+│       └── owasp_asi.py              # OWASP ASI01-ASI10 mapped master test suite
+│
+├── tests/                            # Automated Pytest Test Suites (354 tests)
+│   ├── __init__.py
+│   ├── security/                     # Dedicated Prompt Injection Pytest Suites (25 tests)
+│   │   ├── __init__.py
+│   │   ├── prompt_injection/
+│   │   │   └── test_direct_prompt_injection.py
+│   │   ├── rag_injection/
+│   │   │   └── test_indirect_rag_injection.py
+│   │   ├── tool_injection/
+│   │   │   └── test_tool_mcp_injection.py
+│   │   ├── secret_exfiltration/
+│   │   │   └── test_secret_exfiltration.py
+│   │   ├── test_owasp_asi_categories.py
+│   │   └── test_security_cli.py
 │   ├── test_action_agent.py
+│   ├── test_agent_orchestrator.py
 │   ├── test_api.py
+│   ├── test_approval_engine.py
+│   ├── test_asi01_goal_hijack.py
 │   ├── test_auth.py
 │   ├── test_authorization.py
 │   ├── test_fintech_chatbot.py
 │   ├── test_fintech_domain.py
+│   ├── test_fintech_rag.py
+│   ├── test_fintech_tools.py
+│   ├── test_fintech_transaction_lifecycle.py
 │   ├── test_main_agent.py
 │   ├── test_mcp.py
+│   ├── test_mcp_gateway.py
+│   ├── test_memory.py
+│   ├── test_observability.py
 │   ├── test_orchestrator.py
 │   ├── test_owasp_scenarios.py
 │   ├── test_quick_prompts.py
 │   ├── test_rag_manual.py
 │   ├── test_research_agent.py
 │   ├── test_security_controller.py
+│   ├── test_security_gateway.py
 │   ├── test_security_pipeline.py
-│   └── test_session_context.py
+│   ├── test_session_context.py
+│   ├── test_step17b_e2e_scenarios.py
+│   ├── test_step17b_guardrails.py
+│   ├── test_step17b_ollama_client.py
+│   ├── test_step17b_rag_vector_store.py
+│   ├── test_step17c_system_audit.py
+│   └── test_transaction_risk.py
 │
 ├── vulnerabilities/                  # OWASP Top 10 ASI Scenarios (ASI01 - ASI10)
 │   ├── __init__.py
@@ -1097,34 +1223,43 @@ Then create a Pull Request on GitHub.
 
 ---
 
-# 🔐 Environment Variables and Secrets
+# 🔐 Environment Variables and Ollama Setup
 
-The current educational lab is designed to run locally without production credentials.
+The educational lab runs completely locally without external cloud dependencies or commercial API keys.
 
-If future components require API credentials:
+### Local Ollama Configuration
 
-1. Copy `.env.example` to `.env`
-2. Add your local credentials
-3. Never commit `.env`
+To enable real local LLM generation:
 
-Example:
+1. **Install Ollama**: Download from [ollama.com](https://ollama.com) and start the service:
+   ```bash
+   ollama serve
+   ```
+2. **Pull the Recommended Models**:
+   ```bash
+   ollama pull llama3.2
+   ollama pull nomic-embed-text
+   ```
+3. **Environment Configuration**:
+   Create or update `.env` in the project root:
+   ```bash
+   # Ollama API Connection
+   OLLAMA_BASE_URL=http://localhost:11434
+   OLLAMA_MODEL=llama3.2
+   OLLAMA_EMBED_MODEL=nomic-embed-text
+   ```
 
-```bash
-cp .env.example .env
+### Resilient Offline Mode (No Ollama Required)
+If Ollama is not installed or not running, the lab **automatically activates its local fallback simulation**. All FinTech workflows, RAG lookups, guardrails, and test suites execute with 100% functionality without network access or errors.
+
+### Testing the Full Suite (317 Tests)
+Run pytest with the local virtual environment:
+```powershell
+.\venv_win\Scripts\python -m pytest
 ```
-
-The `.env` file is intentionally excluded from Git.
-
-### Never commit:
-
-```text
-API keys
-Passwords
-Access tokens
-GitHub tokens
-Production credentials
-Private keys
-Customer data
+Or with pytest directly:
+```bash
+pytest tests/ -v
 ```
 
 ---

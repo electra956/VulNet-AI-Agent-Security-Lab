@@ -137,7 +137,16 @@ def render_sidebar(session_manager, current_session) -> str:
 
         st.divider()
 
-        # API Gateway & Telemetry Metrics
+        # LLM Engine & API Gateway Status
+        from llm.ollama_client import get_ollama_client
+        ollama_status = get_ollama_client().check_health()
+        if ollama_status.connected:
+            ollama_badge = f"🟢 Ollama: {ollama_status.model}"
+        else:
+            ollama_badge = "⚠️ Local Fallback (Simulated)"
+
+        st.caption(f"🤖 LLM Engine: `{ollama_badge}`")
+
         try:
             from chatbot.api_client import VulNetApiClient
             gw_health = VulNetApiClient().check_health()
