@@ -15,6 +15,8 @@ from agents.orchestrator import AgentOrchestrator
 from chatbot.sessions.session_manager import SessionManager, Session, get_shared_session_manager
 from auth.authentication import get_auth_service
 from auth.models import UnauthorizedError
+from llm.conversation import ConversationEngine, ToolOutcome
+from security import settings
 from fintech.service import FintechService
 from fintech.models import (
     AccountNotFoundError,
@@ -230,7 +232,7 @@ def post_chat(request: ChatRequest) -> ChatResponse:
     start_time = time.perf_counter()
     mgr = get_session_manager()
     req_id = mgr.generate_request_id()
-    mode = (request.mode or "secure").lower()
+    requested_mode = (request.mode or "secure").lower()
 
     # Step 0: Authentication Verification (Reject Unauthenticated Requests)
     auth_service = get_auth_service()
@@ -245,6 +247,19 @@ def post_chat(request: ChatRequest) -> ChatResponse:
 
     user_id = auth_session.user_id
     session_id = auth_session.session_id
+
+    # The security mode is a server-side decision. A client may only *weaken* it when the
+    # lab explicitly allows it (VULNET_ALLOW_MODE_OVERRIDE); otherwise the request is refused.
+    mode = settings.default_security_mode()
+    if requested_mode != mode:
+        if requested_mode == "vulnerable" and not settings.allow_client_mode_override():
+            logger.warning("Vulnerable-mode request rejected for user %s [Req: %s]", user_id, req_id)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Vulnerable mode cannot be selected by clients in this environment."
+            )
+        if requested_mode == "vulnerable" or settings.allow_client_mode_override():
+            mode = requested_mode
 
     # Initialize RequestTracer & Audit Logger for Observability
     audit_logger = get_audit_logger()
@@ -485,6 +500,44 @@ def post_chat(request: ChatRequest) -> ChatResponse:
                 execution_time_ms=elapsed_ms
             )
 
+        elif settings.llm_enabled() and orchestrator.ollama.check_health().connected:
+            # Real local LLM path (same engine as the dashboard): RAG -> Ollama -> guarded tools -> Ollama
+            def _account_tool(tool_name: str, args: Dict[str, Any]) -> ToolOutcome:
+                acct = str(args.get("account_id") or "")
+                runner = execute_balance_query if tool_name == "get_account_balance" else execute_transaction_query
+                text = runner(acct, user_id, default_acct, req_id, user_role=auth_session.role)
+                if "BLOCKED" in text:
+                    return ToolOutcome("blocked", text, terminal=True)
+                return ToolOutcome("success", text)
+
+            history = [m for m in session.get_messages()[:-1]]
+            turn = ConversationEngine(orchestrator).run(
+                request.message, history=history, session_ctx=session_ctx, req_id=req_id, account_tool=_account_tool
+            )
+            for ev in turn.tool_events:
+                tracer.record_stage("Tool", status=StageStatus.SUCCESS.value if ev.status == "success" else StageStatus.BLOCKED.value,
+                                    details=f"{ev.name}:{ev.status}")
+            out_guard = orchestrator.output_guardrail.validate_output(turn.text, tool_results=turn.tool_results, request_id=req_id)
+            final_text = out_guard.sanitized_content or turn.text
+            blocked_by_tool = turn.security_stopped
+            status_str = "blocked" if blocked_by_tool else "completed"
+            dec_str = "BLOCK" if blocked_by_tool else "ALLOW"
+            audit_logger.log_audit(
+                request_id=req_id, session_id=session_id, user_id=user_id, action="chat_completion",
+                decision=dec_str, status=status_str, risk="HIGH" if blocked_by_tool else "LOW",
+                agent=f"ollama:{turn.model}",
+            )
+            session.add_message(role="assistant", content=final_text, request_id=req_id)
+            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+            return ChatResponse(
+                request_id=req_id, session_id=session.session_id, status=status_str, response=final_text,
+                decision=dec_str, user_id=user_id, execution_time_ms=elapsed_ms,
+                llm_model=turn.model, llm_offline_simulation=turn.is_fallback,
+                retrieval_mode=turn.retrieval_mode,
+                retrieved_sources=[d.get("source") for d in turn.retrieved_docs],
+                tools_called=[e.name for e in turn.tool_events],
+            )
+
         else:
             result = orchestrator.process(request.message, session_context=session_ctx, tracer=tracer)
             pipeline_status = result.get("pipeline_status", "completed")
@@ -517,7 +570,8 @@ def post_chat(request: ChatRequest) -> ChatResponse:
                 scenario=result.get("scenario"),
                 decision="ALLOW",
                 user_id=user_id,
-                execution_time_ms=elapsed_ms
+                execution_time_ms=elapsed_ms,
+                llm_model="deterministic-multi-agent-pipeline",
             )
 
     except Exception as exc:

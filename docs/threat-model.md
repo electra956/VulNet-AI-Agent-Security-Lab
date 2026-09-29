@@ -96,3 +96,12 @@ In VulNet AI Agent Security Lab, the Large Language Model (local Ollama `llama3.
 5. **Least Privilege by Default**: Downstream tools and accounts require explicit authorization for high-risk operations.
 6. **Fail-Safe Containment**: An isolated tool error or LLM failure must gracefully fall back without causing an application-wide crash.
 
+
+
+## Perimeter controls added in the hardening pass
+- **Mode downgrade** (client requests `vulnerable`): rejected server-side outside the lab flag.
+- **Session guessing / fixation**: unguessable IDs and TTL expiry.
+- **Credential and MFA brute force**: per-account lockout with 429.
+- **Cross-origin abuse**: CORS origin allow-list.
+- **Anonymous probing of the detector**: `/security/evaluate` requires a session.
+Residual risk: see "Known limits" in [hardening.md](hardening.md).

@@ -23,7 +23,7 @@ SECURITY CONTROLLER (Signature Detection, Mode Toggle, Telemetry)
       ↓
 SIMULATED FINTECH DOMAIN (Accounts, Balances, Transactions, Ownership Checks)
       ↓
-RAG ENGINE (Local TF-IDF Vector Search)
+RAG ENGINE (Ollama embeddings + TF-IDF hybrid retrieval)
       ↓
 MAIN AGENT (Intent Classification & Task Planning)
       ↓
@@ -53,16 +53,18 @@ The project focuses on:
 - 🛡️ **Session & Tenant Isolation**: Structured `SessionContext` preventing cross-account data leakage (BOLA).
 - 🤖 **Multi-Agent Workflows**: Orchestrated pipeline (Main Agent $\rightarrow$ Specialized Domain Agents $\rightarrow$ Research Agent $\rightarrow$ Action Agent).
 - 🧭 **FinTech Agent Orchestrator**: Intent classification, task planning, and structured routing across 6 specialized domain agents without direct tool execution by Main Agent.
-- 📚 **Retrieval-Augmented Generation (RAG)**: Local TF-IDF search with indirect prompt injection defenses.
+- 📚 **Retrieval-Augmented Generation (RAG)**: Hybrid retrieval (real Ollama `nomic-embed-text` embeddings + TF-IDF) with indirect prompt injection defenses.
 - 🔌 **Model Context Protocol (MCP)**: Safe demo tool execution with RBAC and parameter sanitization.
 - 🚨 **OWASP Agentic Top 10**: Full coverage of ASI01 through ASI10 in both Secure and Vulnerable modes.
 - 📊 **Security Event Telemetry**: Correlated audit logs, timeline profiling, and event tracing.
 - 🛡️ **FinTech RBAC & Authorization**: Strict permissions and resource ownership validation outside the LLM.
 - 🛡️ **AI Security Gateway**: Deterministic pre-agent perimeter with validation, threat detection, policy, and risk evaluation.
 - 🛡️ **Layered Guardrails Middleware**: Modular Input, RAG, Tool, and Output guardrails with deterministic financial invariants.
-- 🦙 **Real Local LLM Engine (Ollama)**: Local multi-turn conversational agent with offline fallback simulation and structured tool calling.
-- 📐 **Real Dense Vector RAG**: Persistent SQLite/JSON vector store with 128-dimensional dense embeddings and cosine similarity search.
-- 🧪 **Comprehensive Testing**: 354 automated tests with 100% pass rate across 36 test suites, including automated prompt injection and canary exfiltration regression suites.
+- 🦙 **Real Local LLM Engine (Ollama)**: Multi-turn conversational agent that sends history and retrieved context to `llama3.2`, runs guarded tool calls, feeds tool results back to the model, and labels any offline-simulation fallback (see [docs/llm-and-rag.md](docs/llm-and-rag.md)).
+- 📐 **Real Dense Vector RAG**: Persistent JSON vector store of 768-dimensional `nomic-embed-text` embeddings (model and content hash tracked per record), hybrid dense + lexical retrieval, and honest `tfidf-lexical` fallback when embeddings are unavailable.
+- 🔑 **Login Page**: the dashboard opens on a password + MFA sign-in with one-click demo accounts and a sign-out button (see [docs/demo-guide.md](docs/demo-guide.md)).
+- 🔒 **Real-World Hardening**: server-side mode policy, random expiring sessions, login lockout, CORS allow-list, gated MFA code (see [docs/hardening.md](docs/hardening.md)).
+- 🧪 **Comprehensive Testing**: 396 automated tests with 100% pass rate across 41 test suites, including automated prompt injection and canary exfiltration regression suites.
 - 🎯 **Automated Prompt Injection Testing**: Deterministic security evaluation harness (`security_tests/`) covering direct injection, indirect RAG poisoning, tool parameter manipulation, and secret exfiltration mapped to OWASP ASI01–ASI10.
 
 ---
@@ -415,7 +417,7 @@ The lab provides a modular, production-style LLM client interface (`llm/`):
 - **Pydantic Schemas (`llm/models.py`)**: Strictly typed schemas for `ChatMessage`, `ChatRequest`, `ChatResponse`, `ToolCallRequest`, `ToolDefinition`, and `LLMHealthStatus`.
 - **System Prompts & Boundaries (`llm/prompts.py`)**: System instructions establishing strict banking domain rules, explicit data boundaries, passive RAG handling, and prohibited tool claims.
 - **Environment Variables**:
-  - `OLLAMA_BASE_URL`: Base URL for local Ollama server (default: `http://localhost:11434` or `http://127.0.0.1:11434`).
+  - `OLLAMA_BASE_URL`: Base URL for local Ollama server (default: `http://127.0.0.1:11434`).
   - `OLLAMA_MODEL`: Target chat model (default: `llama3.2` or `mistral`).
   - `OLLAMA_EMBED_MODEL`: Dense embedding model (default: `nomic-embed-text` or `all-minilm`).
 
@@ -424,7 +426,8 @@ The lab provides a modular, production-style LLM client interface (`llm/`):
 ## 📐 Persistent Vector Store & Dense Local RAG (`rag/`)
 Enhanced retrieval pipeline with real dense embeddings and persistent storage:
 - **Persistent Vector Store (`rag/vector_store.py`)**: Disk-backed vector storage with JSON and SQLite backends, saving chunk text, embeddings, and structured metadata.
-- **Dense Vector Embedder (`LocalDenseEmbedder`)**: Deterministic 128-dimensional dense vector embeddings with cosine similarity search. When Ollama is active, optionally leverages Ollama `/api/embeddings`.
+- **Embeddings (`rag/embeddings.py`)**: Real dense vectors from the configured Ollama embedding model (`/api/embed`). `LocalDenseEmbedder` (128-d hashing) is only an offline placeholder, labelled `local-hash-128`, and is never used for retrieval.
+- **Hybrid Retrieval (`RAGEngine.search`)**: `0.7 × dense + 0.3 × TF-IDF`, an unknown-identifier guard, trust filtering, and per-result `retrieval_mode`, `dense_score`, `lexical_score`.
 - **Rich Document Metadata**: Every knowledge chunk indexes `document_id`, `source`, `document_type`, `title`, `version`, `trust_level`, `owner`, `sensitivity`, `created_at`, and `chunk_id`.
 - **Passive RAG Data Boundaries**: Injected context is strictly wrapped in `<trusted_data>` or `<untrusted_data>` XML tags. The LLM is instructed that retrieved text contains passive reference data, never executable instructions.
 
@@ -523,7 +526,7 @@ vulnerabilities/
 
 # 🧪 Testing
 
-The project contains **354 deterministic automated unit, integration, and security tests** across all components, API endpoints, authentication flows, banking domains, guardrails, and OWASP scenarios with a 100% pass rate.
+The project contains **396 deterministic automated unit, integration, and security tests** across all components, API endpoints, authentication flows, banking domains, guardrails, and OWASP scenarios with a 100% pass rate.
 
 ### Automated Test Execution
 
@@ -654,7 +657,7 @@ VulNet-AI-Agent-Security-Lab/
 │
 ├── rag/                              # Retrieval-Augmented Generation & Vector Store
 │   ├── __init__.py
-│   ├── rag_engine.py                 # TF-IDF & dense similarity engine
+│   ├── rag_engine.py                 # Hybrid (Ollama embeddings + TF-IDF) retrieval engine
 │   ├── vector_store.py               # Persistent SQLite/JSON vector store with 128-d embeddings
 │   └── knowledge/                    # Local FinTech knowledge documents
 │
@@ -689,7 +692,7 @@ VulNet-AI-Agent-Security-Lab/
 │       ├── secret_exfiltration.py    # 6 secret & token exfiltration test cases
 │       └── owasp_asi.py              # OWASP ASI01-ASI10 mapped master test suite
 │
-├── tests/                            # Automated Pytest Test Suites (354 tests)
+├── tests/                            # Automated Pytest Test Suites (396 tests)
 │   ├── __init__.py
 │   ├── security/                     # Dedicated Prompt Injection Pytest Suites (25 tests)
 │   │   ├── __init__.py
@@ -888,7 +891,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Run the test suite (136 tests):
+Run the test suite (396 tests):
 
 ```bash
 pytest
@@ -932,7 +935,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Run the test suite (136 tests):
+Run the test suite (396 tests):
 
 ```powershell
 pytest
@@ -1032,7 +1035,7 @@ Security Controller (Heuristic Signature Checks & Mode Evaluation)
       ↓
 FinTech Domain Service (Account Ownership Invariant Validation)
       ↓
-RAG Engine (TF-IDF Knowledge Retrieval)
+RAG Engine (Hybrid Knowledge Retrieval)
       ↓
 Main Agent (Goal Extraction & Reasoning)
       ↓

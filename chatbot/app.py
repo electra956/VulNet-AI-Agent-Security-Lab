@@ -20,7 +20,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from agents.orchestrator import AgentOrchestrator
 from chatbot.sessions.session_manager import SessionManager, CustomerContext, get_shared_session_manager
 from auth.authentication import get_auth_service
+from chatbot.components.login import is_authenticated, render_login_page
 from chatbot.components.sidebar import render_sidebar
+from security import settings
 from chatbot.components.chat import render_chat_view
 from chatbot.components.account import render_account_view
 from chatbot.components.transactions import render_transactions_view
@@ -50,7 +52,7 @@ if "session_manager" not in st.session_state:
     st.session_state.session_manager = get_shared_session_manager()
 
 if "security_mode" not in st.session_state:
-    st.session_state.security_mode = "secure"
+    st.session_state.security_mode = settings.default_security_mode()
 
 if "orchestrator" not in st.session_state:
     st.session_state.orchestrator = AgentOrchestrator(mode=st.session_state.security_mode)
@@ -58,16 +60,18 @@ else:
     if st.session_state.orchestrator.get_mode() != st.session_state.security_mode:
         st.session_state.orchestrator.set_mode(st.session_state.security_mode)
 
-# Active FinTech Session (Authenticated for CUST-001)
+# Authentication gate: nothing else renders until the user has signed in (password + MFA)
 auth_service = get_auth_service()
-if "active_session_id" not in st.session_state or not auth_service.get_session(st.session_state.get("active_session_id", "")):
-    login_info = auth_service.login("alex_morgan", "Cust001Secure!2026")
-    auth_sess = auth_service.verify_mfa(login_info["challenge_id"], login_info["mfa_code"])
-    st.session_state.active_session_id = auth_sess.session_id
+if not is_authenticated(auth_service):
+    render_login_page(auth_service)
+    st.stop()
 
 current_session = st.session_state.session_manager.get_session(st.session_state.active_session_id)
 if not current_session:
-    current_session = st.session_state.session_manager.create_session(user_id="CUST-001", session_id=st.session_state.active_session_id)
+    current_session = st.session_state.session_manager.create_session(
+        user_id=auth_service.get_session(st.session_state.active_session_id).user_id,
+        session_id=st.session_state.active_session_id,
+    )
 
 if "messages" not in st.session_state:
     st.session_state.messages = current_session.get_messages()

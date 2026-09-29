@@ -50,12 +50,15 @@ class ChatMessage(BaseModel):
     role: str
     content: str = ""
     name: Optional[str] = None
+    tool_name: Optional[str] = None
     tool_calls: Optional[List[ToolCallRequest]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {"role": self.role, "content": self.content}
         if self.name:
             data["name"] = self.name
+        if self.tool_name:
+            data["tool_name"] = self.tool_name
         if self.tool_calls:
             data["tool_calls"] = [
                 {

@@ -13,6 +13,17 @@ This guide provides instructions for installing and running the VulNet FinTech A
 
 ---
 
+## 1b. Local LLM (Ollama) — required for real LLM answers and semantic RAG
+```bash
+ollama serve                      # http://127.0.0.1:11434
+ollama pull llama3.2              # chat model
+ollama pull nomic-embed-text      # embedding model used by RAG
+```
+Without Ollama the app still runs: replies are labelled *Offline simulation* and retrieval falls back to TF-IDF.
+See [llm-and-rag.md](llm-and-rag.md).
+
+---
+
 ## 2. Automated Setup
 
 ### Linux / WSL / macOS
@@ -83,7 +94,7 @@ cp .env.example .env
 ```
 
 ### Step 4: Verify Installation with Test Suite
-Run the full test suite (136 tests across 16 test suites):
+Run the full test suite (366 tests across 38 test suites):
 ```bash
 pytest
 ```

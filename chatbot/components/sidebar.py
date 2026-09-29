@@ -60,13 +60,20 @@ def render_sidebar(session_manager, current_session) -> str:
             unsafe_allow_html=True
         )
 
-        if st.button("➕ New Session", use_container_width=True):
-            new_sess = session_manager.create_session(user_id=cust.customer_id)
-            st.session_state.active_session_id = new_sess.session_id
+        if st.button("➕ New Conversation", use_container_width=True):
+            current_session.messages.clear()
             st.session_state.messages = []
             st.session_state.scenario_result = None
             st.session_state.pending_prompt = None
             st.session_state.orchestrator = AgentOrchestrator(mode=st.session_state.security_mode)
+            st.rerun()
+
+        if st.button("🚪 Sign out", use_container_width=True):
+            from auth.authentication import get_auth_service
+            get_auth_service().logout(st.session_state.get("active_session_id", ""))
+            for key in list(st.session_state.keys()):
+                if key not in ("session_manager",):
+                    del st.session_state[key]
             st.rerun()
 
         st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
@@ -113,8 +120,9 @@ def render_sidebar(session_manager, current_session) -> str:
             unsafe_allow_html=True
         )
 
-        mode_options = ["🟢 Secure Mode", "🔴 Vulnerable Mode"]
-        current_idx = 0 if st.session_state.security_mode == "secure" else 1
+        from security import settings
+        mode_options = ["🟢 Secure Mode", "🔴 Vulnerable Mode"] if settings.allow_client_mode_override() else ["🟢 Secure Mode"]
+        current_idx = 0 if (st.session_state.security_mode == "secure" or len(mode_options) == 1) else 1
         selected_mode = st.radio(
             "Operating Mode",
             mode_options,

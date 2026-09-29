@@ -9,11 +9,13 @@ Coordinates:
 - Integration with SessionManager and SessionContext.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
+import time
 from typing import Any, Dict, Optional
 
 from auth.models import (
+    AccountLockedError,
     AuthSession,
     InvalidCredentialsError,
     MFAVerificationError,
@@ -23,6 +25,7 @@ from auth.models import (
 )
 from auth.mfa import MFAService
 from auth.users import UserRepository, verify_password
+from security import settings
 from chatbot.sessions.session_manager import SessionManager, CustomerContext, get_shared_session_manager
 
 logger = logging.getLogger("vulnet.auth")
@@ -43,6 +46,22 @@ class AuthenticationService:
         self.mfa_service = mfa_service or MFAService()
         self.session_manager = session_manager or get_shared_session_manager()
         self._active_sessions: Dict[str, AuthSession] = {}
+        # username -> (consecutive failures, lockout-until monotonic time)
+        self._failed_logins: Dict[str, list] = {}
+
+    def _check_lockout(self, key: str) -> None:
+        rec = self._failed_logins.get(key)
+        if rec and rec[1] > time.monotonic():
+            raise AccountLockedError("Too many failed attempts. Account temporarily locked; try again later.")
+        if rec and rec[1] and rec[1] <= time.monotonic():
+            self._failed_logins.pop(key, None)
+
+    def _record_failure(self, key: str) -> None:
+        rec = self._failed_logins.setdefault(key, [0, 0.0])
+        rec[0] += 1
+        if rec[0] >= settings.max_failed_logins():
+            rec[1] = time.monotonic() + settings.lockout_seconds()
+            logger.warning("Account '%s' locked after %d failed logins", key, rec[0])
 
     def login(self, username: str, password: str) -> Dict[str, Any]:
         """
@@ -56,29 +75,39 @@ class AuthenticationService:
         if not password:
             raise InvalidCredentialsError("Password cannot be empty.")
 
+        lock_key = username.strip().lower()
+        self._check_lockout(lock_key)
+
         user = self.user_repo.get_user_by_username(username.strip())
         if not user:
             # Mask whether username or password was incorrect
+            self._record_failure(lock_key)
             raise InvalidCredentialsError("Invalid username or password.")
 
         if user.status != "ACTIVE":
             raise InvalidCredentialsError("User account is disabled or suspended.")
 
         if not verify_password(password, user.password_hash, user.salt):
+            self._record_failure(lock_key)
             raise InvalidCredentialsError("Invalid username or password.")
+
+        self._failed_logins.pop(lock_key, None)
 
         # Credentials valid: Initiate MFA challenge
         challenge = self.mfa_service.create_challenge(user.user_id)
         logger.info("MFA challenge '%s' issued for user '%s'", challenge.challenge_id, user.user_id)
 
-        return {
+        result = {
             "status": "mfa_required",
             "challenge_id": challenge.challenge_id,
             "user_id": user.user_id,
             "role": user.role,
             "expires_at": challenge.expires_at,
-            "mfa_code": challenge.code,  # Exposed for local test harness & lab inspection
         }
+        if settings.expose_mfa_code():
+            # Lab only: there is no SMS/email channel, so the code is returned for the demo.
+            result["mfa_code"] = challenge.code
+        return result
 
     def verify_mfa(self, challenge_id: str, code: str) -> AuthSession:
         """
@@ -99,8 +128,13 @@ class AuthenticationService:
         if not challenge:
             raise MFAVerificationError(f"MFA challenge '{challenge_id}' not found.")
 
-        # Verify challenge code
-        self.mfa_service.verify_challenge(challenge_id.strip(), code.strip())
+        # Verify challenge code (failures count against the account lockout too)
+        self._check_lockout(challenge.user_id.lower())
+        try:
+            self.mfa_service.verify_challenge(challenge_id.strip(), code.strip())
+        except MFAVerificationError:
+            self._record_failure(challenge.user_id.lower())
+            raise
 
         user = self.user_repo.get_user_by_id(challenge.user_id)
         if not user:
@@ -125,7 +159,7 @@ class AuthenticationService:
             account_ids=list(user.account_ids),
             user_role=user.role,
             full_name=user.full_name,
-            balance=5420.50 if user.user_id == "CUST-001" else (3100.25 if user.user_id == "CUST-002" else 0.0),
+            balance=self._primary_balance(user),
         )
         session_obj = self.session_manager.create_session(
             user_id=user.user_id,
@@ -137,6 +171,17 @@ class AuthenticationService:
 
         logger.info("User '%s' authenticated successfully. Session: '%s'", user.user_id, session_id)
         return auth_session
+
+    @staticmethod
+    def _primary_balance(user) -> float:
+        """Read the opening balance from the simulated domain instead of hard-coding it."""
+        if not user.account_ids:
+            return 0.0
+        try:
+            from fintech.service import FintechService
+            return float(FintechService().get_balance(user.user_id, user.account_ids[0])["balance"])
+        except Exception:
+            return 0.0
 
     def logout(self, session_id: str) -> bool:
         """
@@ -175,12 +220,24 @@ class AuthenticationService:
         if not session or not session.is_active:
             raise UnauthorizedError(f"Session '{clean_id}' is invalid, unauthenticated, or expired. Please log in.")
 
+        if self._is_expired(session):
+            self.logout(clean_id)
+            raise UnauthorizedError("Session expired. Please log in again.")
+
         return session
+
+    @staticmethod
+    def _is_expired(session: AuthSession) -> bool:
+        try:
+            issued = datetime.fromisoformat(session.authenticated_at)
+        except (TypeError, ValueError):
+            return True
+        return datetime.now() - issued > timedelta(seconds=settings.session_ttl_seconds())
 
     def get_session(self, session_id: str) -> Optional[AuthSession]:
         """Lookup active session by ID."""
         session = self._active_sessions.get(session_id.strip())
-        if session and session.is_active:
+        if session and session.is_active and not self._is_expired(session):
             return session
         return None
 

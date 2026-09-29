@@ -34,6 +34,11 @@ class RAGGuardrail:
         (r"(?i)dump (?:all )?(?:customer |user )?(?:tokens?|credentials?|passwords?)", "INDIRECT_INJECTION_TOKEN_DUMP"),
         (r"(?i)reveal (?:the |your )?(?:system prompt|secret|test_secret|internal)", "INDIRECT_INJECTION_REVEAL_SECRET"),
         (r"(?i)(?:system instruction:|note: before using this tool|execute (?:python|script|command)|import os)", "INDIRECT_INJECTION_IMPERATIVE_COMMAND"),
+        (r"(?i)(?:ignore|disregard|bypass|disable|skip|override) (?:all |any |the )?(?:security|safety|policy|compliance|approval|mfa|guardrail)s?(?: controls| checks| rules| policies| requirements)?", "INDIRECT_INJECTION_DISABLE_CONTROLS"),
+        (r"(?i)(?:approve|allow|authorize) (?:every|all|any) (?:transfer|payment|transaction)s?", "INDIRECT_INJECTION_BLANKET_APPROVAL"),
+        (r"(?i)(?:approve|process|execute|complete|release)\b[^.\n]{0,60}\bwithout (?:any )?(?:human |dual[- ]control |compliance |manager )?approval", "INDIRECT_INJECTION_SKIP_APPROVAL"),
+        (r"(?i)grant (?:me |the |an? |all )?(?:admin|administrator|superuser|root)\b", "INDIRECT_INJECTION_GRANT_ADMIN"),
+        (r"(?i)\b(?:call|invoke|execute|run|use|trigger)\s+(?:the\s+)?(?:tool\s+)?(?:transfer_funds|get_account_balance|get_transaction_history|get_security_status|search_knowledge_base|execute_\w+|grant_\w+|update_\w+)", "INDIRECT_INJECTION_TOOL_DIRECTIVE"),
     ]
 
     def __init__(self, mode: str = "secure"):

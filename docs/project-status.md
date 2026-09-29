@@ -154,3 +154,17 @@ chmod +x setup.sh && ./setup.sh
 3. **Passive RAG Data Boundary**: Retrieved documents are reference data, never executable instructions.
 4. **Dual-Control Human Approval**: High-value transactions (> ₹50,000) cannot be executed autonomously by any model.
 5. **Defense-in-Depth**: 4 independent guardrail layers operate before and after LLM generation.
+
+
+## Hardening pass (real-world replication)
+Server-side security mode, gated MFA code, random session IDs with TTL, login lockout (429), authenticated
+`/security/evaluate`, CORS allow-list and security headers. See [hardening.md](hardening.md).
+Tests: 396 total (`tests/test_hardening.py` adds 9; `tests/test_login_page.py` adds 3). `test_audit_phase3_ollama_live` needs a running Ollama server.
+
+
+## Real LLM + RAG remediation (audit follow-up)
+Fixed: tool results are fed back to the model (final answer is model-written); tools are exposed only when needed; model-invented
+arguments are grounded or rejected; Ollama embeddings + hybrid retrieval with a persisted, model-tagged vector store;
+stale `OLLAMA_BASE_URL` corrected; offline simulation clearly labelled; stronger RAG-poisoning patterns plus a taint policy;
+FastAPI `/chat` shares the same engine (with `llm_model`, `retrieval_mode`, `retrieved_sources`, `tools_called` in the response).
+See [llm-and-rag.md](llm-and-rag.md). Tests: 396 (`test_conversation_engine.py` 22 deterministic, `test_live_llm_rag.py` 7 live).

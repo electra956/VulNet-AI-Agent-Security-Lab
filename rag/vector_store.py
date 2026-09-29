@@ -35,11 +35,13 @@ def cosine_similarity_vectors(vec_a: List[float], vec_b: List[float]) -> float:
 class LocalDenseEmbedder:
     """
     Deterministic 128-dimensional dense vector generator.
-    Serves as an offline local fallback when Ollama embedding model is not yet loaded.
-    Produces stable, normalized dense embeddings based on character/word n-grams.
+    Offline placeholder ONLY (hashing trick over words and character 3-grams). It is NOT a semantic
+    model and is never used for runtime retrieval when real Ollama embeddings exist; records created
+    with it are labelled embedding_model="local-hash-128".
     """
 
     DIM = 128
+    MODEL_NAME = "local-hash-128"
 
     def embed(self, text: str) -> List[float]:
         vec = [0.0] * self.DIM
@@ -123,21 +125,35 @@ class PersistentVectorStore:
         chunk_id: str,
         content: str,
         metadata: Dict[str, Any],
-        embedding: Optional[List[float]] = None
+        embedding: Optional[List[float]] = None,
+        embedding_model: Optional[str] = None
     ) -> None:
         """
         Add or update a vector record with chunk content and security metadata.
+        `embedding_model` records which model produced the vector so incompatible vectors are never mixed.
         """
         if embedding is None:
             embedding = self.local_embedder.embed(content)
+            embedding_model = LocalDenseEmbedder.MODEL_NAME
 
         self.records[chunk_id] = {
             "chunk_id": chunk_id,
             "content": content,
+            "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            "embedding_model": embedding_model or "unknown",
             "metadata": metadata,
             "embedding": embedding,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+
+    def get_embedding(self, chunk_id: str, content: str, embedding_model: str) -> Optional[List[float]]:
+        """Return the stored vector only if it was produced by `embedding_model` for identical content."""
+        rec = self.records.get(chunk_id)
+        if not rec or rec.get("embedding_model") != embedding_model:
+            return None
+        if rec.get("content_hash") != hashlib.sha256(content.encode("utf-8")).hexdigest():
+            return None
+        return rec.get("embedding")
 
     def delete_record(self, chunk_id: str) -> bool:
         """Remove a record by chunk_id."""
@@ -156,7 +172,8 @@ class PersistentVectorStore:
         query_vector: List[float],
         top_k: int = 3,
         min_score: float = 0.05,
-        trust_filter: Optional[List[str]] = None
+        trust_filter: Optional[List[str]] = None,
+        embedding_model: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Retrieve top_k candidate chunks matching the query vector.
@@ -167,6 +184,8 @@ class PersistentVectorStore:
         for chunk_id, rec in self.records.items():
             emb = rec.get("embedding", [])
             meta = rec.get("metadata", {})
+            if embedding_model and rec.get("embedding_model") != embedding_model:
+                continue
 
             # Trust policy filter
             if trust_filter:

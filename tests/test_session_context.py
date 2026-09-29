@@ -62,12 +62,12 @@ def test_unique_request_ids():
 
 
 def test_unique_session_ids():
-    """Verify unique sequential session ID generation."""
+    """Verify session IDs are unique and unguessable (random, not sequential)."""
     s1 = SessionManager.generate_session_id()
     s2 = SessionManager.generate_session_id()
 
-    assert re.match(r"^SESSION-\d{3}$", s1)
-    assert re.match(r"^SESSION-\d{3}$", s2)
+    assert re.match(r"^SESSION-[0-9A-F]{16}$", s1)
+    assert re.match(r"^SESSION-[0-9A-F]{16}$", s2)
     assert s1 != s2
 
 

@@ -36,7 +36,7 @@ The test runner will execute all **329 automated test cases** across **32 test s
 16. **FinTech Agent Orchestrator & Specialized Agents** (`tests/test_agent_orchestrator.py`) — Intent classification, task planning, agent routing, structured outputs, and financial safety invariants.
 17. **FinTech Agent Memory Subsystem** (`tests/test_memory.py`) — Conversation memory, user preferences, authorization claim prevention, sensitive data sanitization, and ASI06 defense.
 18. **OWASP Top 10 Scenarios** (`tests/test_owasp_scenarios.py`) — Automated side-by-side verification of ASI01 through ASI10 in Secure vs. Vulnerable modes.
-19. **Quick Prompts Suite** (`tests/test_quick_prompts.py`) — Pre-configured adversarial and benign prompts validation.
+19. **Quick Prompts Suite** (`tests/test_quick_prompts.py`, dropdown UI in `tests/test_login_page.py`) — Pre-configured adversarial and benign prompts validation.
 20. **RAG Engine Manual** (`tests/test_rag_manual.py`) — TF-IDF vector retrieval, cosine similarity thresholds, and indirect prompt injection filtering.
 21. **FinTech Knowledge Base & Hardened RAG** (`tests/test_fintech_rag.py`) — Semantic chunking, document metadata (`source`, `document_type`, `trust_level`, `created_at`), trusted vs untrusted boundaries, and indirect injection neutralization.
 22. **Research Agent** (`tests/test_research_agent.py`) — Context synthesis and command neutralization under Secure Mode.
@@ -112,3 +112,9 @@ python -m py_compile agents/*.py api/*.py api/routes/*.py auth/*.py chatbot/*.py
 pytest tests/test_fintech_transaction_lifecycle.py -v
 ```
 
+
+
+## LLM / RAG test layers
+- **Default (offline, deterministic):** `tests/conftest.py` sets `VULNET_USE_LLM=false` and `VULNET_RAG_EMBEDDINGS=off`, so the suite needs no Ollama server.
+- `tests/test_conversation_engine.py`: tool loop, history, taint policy, argument grounding, offline labelling, hybrid-fusion logic (a scripted stand-in replaces the model only here).
+- `tests/test_live_llm_rag.py`: **live** Ollama tests (real embeddings, grounded RAG answer for a unique document, unknown-identifier negative, three-turn memory, tool-backed balance, poisoned document). Skipped automatically when Ollama or the models are missing. Run with `pytest tests/test_live_llm_rag.py`.

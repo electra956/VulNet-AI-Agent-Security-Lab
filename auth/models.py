@@ -26,6 +26,11 @@ class InvalidCredentialsError(AuthError):
     pass
 
 
+class AccountLockedError(AuthError):
+    """Raised when too many failed logins temporarily lock an account."""
+    pass
+
+
 class MFAVerificationError(AuthError):
     """Raised when an MFA challenge code is invalid or expired."""
     pass

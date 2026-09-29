@@ -639,26 +639,27 @@ The **VulNet AI Agent Security Lab** is an educational and security research pla
 
 ---
 
-### 3.19 Real Local LLM Integration (`llm/ollama_client.py`)
-- **Objective**: Provides authentic conversational intelligence and reasoning using a locally hosted LLM via Ollama (`llama3.2`), completely avoiding external cloud APIs or data leakage.
-- **Dynamic WSL Bridge & Host Auto-Discovery**:
-  - Automatically probes candidate URLs:
-    1. Explicit `base_url` or `OLLAMA_BASE_URL` environment variable.
-    2. `http://localhost:11434` / `http://127.0.0.1:11434`.
-    3. WSL Default Gateway / Virtual Interface IP (e.g., `172.24.106.69:11434`) dynamically resolved on Windows via `ipconfig` parsing.
-  - Transparently bridges Windows host processes to Ollama running inside Linux/WSL with NVIDIA GPU acceleration.
-- **Graceful Offline Simulation Fallback**:
-  - If Ollama is unreachable or a model is not installed, the client falls back to a deterministic, high-fidelity FinTech conversational simulation without crashing or disrupting the user session.
-- **Streaming & Non-Streaming Generation**: Supports both full-response generation (`generate(prompt)`) and token streaming (`stream_chat(prompt)`) for responsive UI rendering.
+### 3.19 Real Local LLM Integration (`llm/ollama_client.py`, `llm/conversation.py`)
+- **Objective**: Conversational intelligence from a locally hosted LLM via Ollama (`llama3.2`), with no external cloud APIs.
+- **Conversation engine (`llm/conversation.py`)**: one shared turn implementation used by the dashboard and `POST /chat`:
+  RAG retrieval → RAG guardrail → prompt (system + last 10 turns + retrieved data + question) → Ollama chat →
+  per-tool-call checks (offered? arguments grounded in the user's words? tool guardrail, taint policy) → execute →
+  **tool result returned to the model** → final answer → numeric grounding check → output guardrail.
+- **Tools are opt-in per request** (`select_tools`), so conversational and knowledge questions are answered directly.
+- **Endpoint discovery**: explicit `OLLAMA_BASE_URL`, then `127.0.0.1` / `localhost`, plus WSL host discovery on Windows.
+- **Offline simulation**: if Ollama is unreachable the rule-based simulator answers; the reply carries an "Offline simulation" banner,
+  `model="offline-simulation"` and `is_fallback=True` (API: `llm_offline_simulation`). It never passes as the LLM.
+- Full details: [llm-and-rag.md](llm-and-rag.md).
 
 ---
 
-### 3.20 Real Local RAG & Vector Store (`rag/rag_engine.py`, `rag/vector_store.py`)
-- **Vector Storage**: In-memory dense vector store (`VectorStore`) indexing policy documents from `rag/knowledge/fintech_policies.txt` using chunking, similarity scoring, and embedding vectors.
-- **Retrieval Pipeline**:
-  - Queries are embedded and compared against stored policy chunks using cosine similarity.
-  - Context is retrieved with relevant chunk references, source tags, and document types (`BANKING_POLICY`, `SECURITY_POLICY`, etc.).
-- **Singleton Lifecycle**: Managed through `get_rag_engine()` factory ensuring synchronized state between API gateway, Streamlit UI, and multi-agent orchestrator.
+### 3.20 Real Local RAG & Vector Store (`rag/rag_engine.py`, `rag/embeddings.py`, `rag/vector_store.py`)
+- **Embeddings**: `nomic-embed-text` via Ollama `/api/embed` (768-d; `search_document:` / `search_query:` prefixes).
+- **Vector store**: `data/vector_store.json`; each record carries `embedding_model` and `content_hash`, so vectors are re-computed only when text or model changes.
+- **Retrieval**: query embedded at runtime → cosine similarity → fused with TF-IDF (`0.7 dense + 0.3 lexical`, dense floor 0.50) → relevance threshold → trust evaluation. An opaque identifier absent from the corpus needs lexical corroboration.
+- **Modes**: `hybrid:<embed model>` or `tfidf-lexical` (reported on every result and shown in the UI/API).
+- **Poisoning**: injection scan and neutralisation of untrusted chunks, trust tags, and a taint policy that holds state-changing tools when untrusted text was retrieved.
+- **Singleton Lifecycle**: `get_rag_engine()` keeps API gateway, Streamlit UI and orchestrator in sync.
 
 ---
 

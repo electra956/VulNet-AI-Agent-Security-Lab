@@ -30,9 +30,12 @@ from llm.prompts import (
 from dotenv import load_dotenv
 load_dotenv()
 
+from security import settings
+
 logger = logging.getLogger("vulnet.llm.ollama")
 
 DEFAULT_BASE_URL = "http://127.0.0.1:11434"
+FALLBACK_MODEL_LABEL = "offline-simulation"
 DEFAULT_CHAT_MODEL = "llama3.2:latest"
 DEFAULT_EMBED_MODEL = "nomic-embed-text:latest"
 DEFAULT_TIMEOUT_SEC = 60.0
@@ -176,20 +179,22 @@ class OllamaClient:
     ) -> ChatResponse:
         """
         Send a chat completion request to Ollama.
-        Falls back seamlessly to local deterministic simulation if Ollama is unreachable.
+        If Ollama is unreachable the deterministic offline simulation is used and the response is
+        clearly marked (is_fallback=True, model="offline-simulation").
         """
         target_model = model or self.model
         health = self.check_health()
 
-        if not health.connected:
+        if not health.connected or not settings.llm_enabled():
             return self._fallback_chat_completion(messages, tools)
 
         # Prepare messages payload
         payload_messages = [m.to_dict() for m in messages]
+        # tools=None -> full FinTech tool set; tools=[] -> conversation only (no tools exposed)
         tools_payload = (
-            [t.model_dump() if hasattr(t, "model_dump") else t for t in tools]
-            if tools
-            else get_fintech_tools_payload()
+            get_fintech_tools_payload()
+            if tools is None
+            else [t.model_dump() if hasattr(t, "model_dump") else t for t in tools]
         )
 
         body: Dict[str, Any] = {
@@ -303,28 +308,39 @@ class OllamaClient:
     # 3. EMBEDDINGS
     # =========================================================================
 
-    def get_embedding(self, text: str, model: Optional[str] = None) -> Optional[List[float]]:
+    def has_model(self, name: str) -> bool:
+        """True if `name` (with or without :tag) is installed on the connected Ollama server."""
+        health = self.check_health()
+        if not health.connected:
+            return False
+        base = name.split(":")[0]
+        return any(m == name or m.split(":")[0] == base for m in health.available_models)
+
+    def embed_many(self, texts: List[str], model: Optional[str] = None) -> Optional[List[List[float]]]:
         """
-        Request dense text embedding from Ollama (/api/embeddings).
-        Returns None if Ollama is unreachable.
+        Generate real dense embeddings with the configured Ollama embedding model (/api/embed).
+        Returns None if Ollama or the embedding model is unavailable; never returns fake vectors.
         """
         target_embed = model or self.embed_model
-        if not self.is_available():
+        if not texts or not self.has_model(target_embed):
             return None
-
         try:
-            with httpx.Client(timeout=10.0) as client:
-                # Try Ollama /api/embeddings or /api/embed
-                res = client.post(
-                    f"{self.base_url}/api/embeddings",
-                    json={"model": target_embed, "prompt": text}
-                )
+            with httpx.Client(timeout=max(self.timeout, 30.0)) as client:
+                res = client.post(f"{self.base_url}/api/embed", json={"model": target_embed, "input": texts})
                 if res.status_code == 200:
-                    data = res.json()
-                    return data.get("embedding")
+                    vectors = res.json().get("embeddings")
+                    if vectors and len(vectors) == len(texts) and all(vectors):
+                        return vectors
+                else:
+                    logger.warning(f"Ollama /api/embed HTTP {res.status_code}: {res.text[:200]}")
         except Exception as exc:
-            logger.debug(f"Ollama embedding failed: {exc}")
+            logger.warning(f"Ollama embedding failed: {exc}")
         return None
+
+    def get_embedding(self, text: str, model: Optional[str] = None) -> Optional[List[float]]:
+        """Embed a single text with Ollama. Returns None if unavailable."""
+        vectors = self.embed_many([text], model=model)
+        return vectors[0] if vectors else None
 
     # =========================================================================
     # 4. INLINE TOOL EXTRACTION & FALLBACK LOGIC
@@ -546,7 +562,7 @@ class OllamaClient:
             )
 
         return ChatResponse(
-            model=self.model,
+            model=FALLBACK_MODEL_LABEL,
             content=content,
             role="assistant",
             tool_calls=tool_calls,

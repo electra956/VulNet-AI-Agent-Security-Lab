@@ -23,6 +23,7 @@ from api.schemas import (
 )
 from auth.authentication import get_auth_service
 from auth.models import (
+    AccountLockedError,
     InvalidCredentialsError,
     MFAVerificationError,
     UnauthorizedError,
@@ -49,6 +50,13 @@ def login(request: LoginRequest) -> LoginResponse:
             role=res["role"],
             expires_at=res["expires_at"],
             mfa_code=res.get("mfa_code")
+        )
+    except AccountLockedError as exc:
+        logger.warning("Locked-out login attempt for '%s'", request.username)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": "900"},
         )
     except InvalidCredentialsError as exc:
         logger.warning("Failed login attempt for '%s': %s", request.username, str(exc))
@@ -79,6 +87,12 @@ def verify_mfa(request: MFAVerifyRequest) -> MFAVerifyResponse:
             role=session.role,
             account_ids=session.account_ids,
             authenticated_at=session.authenticated_at
+        )
+    except AccountLockedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": "900"},
         )
     except MFAVerificationError as exc:
         logger.warning("MFA verification failure for challenge '%s': %s", request.challenge_id, str(exc))

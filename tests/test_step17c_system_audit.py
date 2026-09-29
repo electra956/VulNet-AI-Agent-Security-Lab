@@ -30,10 +30,13 @@ from agents.orchestrator import AgentOrchestrator
 from memory.memory_validator import MemoryValidator, MemoryClassification
 
 
-def test_audit_phase3_ollama_live():
-    """Phase 3: Verify Ollama live connectivity & generation."""
+def test_audit_phase3_ollama_live(monkeypatch):
+    """Phase 3: Verify Ollama live connectivity & generation (skipped when no Ollama server is running)."""
+    monkeypatch.setenv("VULNET_USE_LLM", "true")
     client = get_ollama_client()
     health = client.check_health(force=True)
+    if not health.connected:
+        pytest.skip(f"Ollama not reachable: {health.error}")
     assert health.connected is True
     assert health.mode == "live"
     assert health.model is not None

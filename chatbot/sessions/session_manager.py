@@ -13,6 +13,7 @@ Provides:
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 import itertools
+import secrets
 from typing import Any, Dict, List, Optional
 import uuid
 
@@ -260,9 +261,8 @@ class SessionManager:
 
     @classmethod
     def generate_session_id(cls) -> str:
-        """Generate a clean sequential session ID (e.g. SESSION-001)."""
-        count = next(cls._session_counter)
-        return f"SESSION-{count:03d}"
+        """Generate an unguessable session ID (e.g. SESSION-9F2C41A7B0D3E512)."""
+        return f"SESSION-{secrets.token_hex(8).upper()}"
 
     def create_session(
         self,

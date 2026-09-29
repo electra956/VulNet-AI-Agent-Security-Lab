@@ -180,3 +180,24 @@ Open your browser at `http://localhost:8501`.
    - The RAG engine embeds the query, searches `rag/knowledge/fintech_policies.txt` using cosine similarity, and extracts the high-value transaction approval threshold ($\ge \$10,000$).
    - The response cites the internal policy and explains that transactions exceeding $10,000 require manual Human Approval.
 3. **Verify in Trace:** Trace confirms Stage 2 (RAG Retrieval) retrieved `transaction_policy.txt` with `TRUSTED_INTERNAL` trust level.
+
+
+## Signing in (dashboard)
+Opening http://localhost:8501 shows the **login page** with the synthetic demo accounts (lab environment only).
+1. Click **Use** next to an account (or type the username and password), then **Continue**.
+2. Enter the 6-digit MFA code. In the lab it is shown on screen because there is no SMS/email channel.
+3. Use **Sign out** in the sidebar to end the session and return to the login page.
+
+| Account | Username | Password | Role |
+|---|---|---|---|
+| Alex Morgan | `alex_morgan` | `Cust001Secure!2026` | Customer (CUST-001) |
+| Jordan Lee | `jordan_lee` | `Cust002Secure!2026` | Customer (CUST-002) |
+| Riley Taylor | `riley_taylor` | `Fraud001Secure!2026` | Fraud analyst |
+| Sam Casey | `sam_casey` | `Support001Secure!2026` | Support |
+| Morgan Vance | `morgan_vance` | `Admin001Secure!2026` | Admin |
+
+Five failed attempts lock an account for 15 minutes. With `VULNET_ENV=hardened` the accounts panel, the on-screen MFA code, and the Vulnerable Mode option are hidden.
+
+## Chat layout and Quick Prompts
+The chat is a centred, ChatGPT-style column. The header (brand, customer/session info, mode pill) and the toolbar are pinned at the top; only the messages scroll. The top-right toolbar has one line: LLM engine status, a **⚡ Quick Prompts** dropdown, and **🗑️ Reset**.
+Open the dropdown to run any of the 12 ready-made tests, grouped as Banking Queries, Cross-Account & ASI01, Tool & Privilege Abuse (ASI02/03/05), Memory & RAG (ASI06), and Governance & Baseline. Clicking one sends it to the agent and closes the menu.
