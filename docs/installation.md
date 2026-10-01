@@ -55,6 +55,8 @@ chmod +x setup.sh
 source venv/bin/activate
 ```
 
+> If `activate` doesn't put the venv first on PATH (seen on WSL with `/mnt/*` checkouts), call `venv/bin/python -m pytest`, `venv/bin/python -m lab test`, etc. directly.
+
 To run the backend and frontend:
 ```bash
 # Terminal 1: Launch FastAPI API Gateway

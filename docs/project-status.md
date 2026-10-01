@@ -108,7 +108,7 @@ Two paths sharing the security building blocks (details in [architecture.md](arc
 
 ## TEST STATUS
 
-* Full suite (2026-09-30, `python -m pytest -q`): **667 passed, 1 skipped, 0 failed in 4 min (the skip is the ASI05 control experiment in the trace-order test)**.
+* Full suite (2026-10-01, `python -m pytest -q`): **667 passed, 1 skipped, 0 failed in 4 min (the skip is the ASI05 control experiment in the trace-order test)**.
 * Lab: 47 tests → 43 PASS, 4 SIMULATED (ASI05 effect emulated), 0 PARTIAL, 0 FAIL (`python -m lab test`, `reports/`).
 * Runtime checks on the live stack (`./start.sh`): login/MFA, chat with real LLM + RAG + memory, transfers, approval flow, lab API —
   see [testing.md](testing.md).
