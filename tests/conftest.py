@@ -7,3 +7,8 @@ import os
 
 os.environ.setdefault("VULNET_USE_LLM", "false")
 os.environ.setdefault("VULNET_RAG_EMBEDDINGS", "off")
+
+import tempfile
+
+# Trusted-payee state is file-backed; keep test runs away from the real data/ directory.
+os.environ.setdefault("VULNET_BENEFICIARY_FILE", os.path.join(tempfile.mkdtemp(prefix="vulnet-test-"), "beneficiaries.json"))

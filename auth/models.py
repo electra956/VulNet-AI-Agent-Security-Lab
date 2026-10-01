@@ -61,6 +61,7 @@ class User:
     account_ids: List[str] = field(default_factory=list)
     mfa_enabled: bool = True
     status: str = "ACTIVE"
+    email: str = ""
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
     def to_dict(self, include_sensitive: bool = False) -> Dict[str, Any]:

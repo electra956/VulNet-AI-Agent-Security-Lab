@@ -58,7 +58,7 @@ Demo accounts (full list in [docs/demo-guide.md](docs/demo-guide.md)):
 ## ⚔️ Usage
 
 - **Chat** — local `llama3.2`, RAG with citations, guarded tool calls, human approval for high-risk transfers.
-- **Attack Lab** and ten **OWASP Agentic Top 10** pages — pick a scenario, run it in secure or vulnerable mode, and see which control acted.
+- **Attack Lab** and the ten **OWASP Agentic Top 10** pages (under the sidebar's **Other** dropdown) — pick a scenario, run it in secure or vulnerable mode, and see which control acted.
 
 ```bash
 python -m lab list

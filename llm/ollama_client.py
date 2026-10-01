@@ -38,6 +38,8 @@ DEFAULT_BASE_URL = "http://127.0.0.1:11434"
 FALLBACK_MODEL_LABEL = "offline-simulation"
 DEFAULT_CHAT_MODEL = "llama3.2:latest"
 DEFAULT_EMBED_MODEL = "nomic-embed-text:latest"
+KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+MAX_REPLY_TOKENS = int(os.getenv("OLLAMA_MAX_REPLY_TOKENS", "400"))
 DEFAULT_TIMEOUT_SEC = 60.0
 
 
@@ -201,8 +203,10 @@ class OllamaClient:
             "model": target_model,
             "messages": payload_messages,
             "stream": False,
+            "keep_alive": KEEP_ALIVE,   # keep the model in memory: a cold reload costs 30+ s
             "options": {
-                "temperature": temperature
+                "temperature": temperature,
+                "num_predict": MAX_REPLY_TOKENS,
             }
         }
         if tools_payload:
@@ -284,7 +288,8 @@ class OllamaClient:
             "model": target_model,
             "messages": payload_messages,
             "stream": True,
-            "options": {"temperature": temperature}
+            "keep_alive": KEEP_ALIVE,
+            "options": {"temperature": temperature, "num_predict": MAX_REPLY_TOKENS}
         }
 
         try:
@@ -326,7 +331,7 @@ class OllamaClient:
             return None
         try:
             with httpx.Client(timeout=max(self.timeout, 30.0)) as client:
-                res = client.post(f"{self.base_url}/api/embed", json={"model": target_embed, "input": texts})
+                res = client.post(f"{self.base_url}/api/embed", json={"model": target_embed, "input": texts, "keep_alive": KEEP_ALIVE})
                 if res.status_code == 200:
                     vectors = res.json().get("embeddings")
                     if vectors and len(vectors) == len(texts) and all(vectors):

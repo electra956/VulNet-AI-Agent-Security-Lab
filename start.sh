@@ -70,6 +70,10 @@ start_ollama() {
       say "[ollama] model $m ready"
     fi
   done
+  # Preload both models so the first chat/RAG request isn't a 30+ s cold start
+  say "[ollama] warming models..."
+  curl -s "$OLLAMA_URL/api/chat" -d "{\"model\":\"$CHAT_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":false,\"keep_alive\":\"30m\",\"options\":{\"num_predict\":1}}" >/dev/null 2>&1
+  curl -s "$OLLAMA_URL/api/embed" -d "{\"model\":\"$EMBED_MODEL\",\"input\":\"warm\",\"keep_alive\":\"30m\"}" >/dev/null 2>&1
 }
 
 start_services() {

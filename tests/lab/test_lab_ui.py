@@ -8,7 +8,8 @@ from streamlit.testing.v1 import AppTest
 from auth.authentication import get_auth_service
 
 APP = Path(__file__).resolve().parents[2] / "chatbot" / "app.py"
-PAGES = ["💬 Chat", "👥 Users", "🏦 Account", "💳 Transactions", "✅ Approvals", "🤖 Agents", "📚 RAG", "🧠 Memory", "🧰 MCP Tools",
+MAIN_PAGES = ["💬 Chat", "💸 Pay", "👤 Profile", "🏦 Account", "💳 Transactions"]
+PAGES = ["💬 Chat", "💸 Pay", "👤 Profile", "👥 Users", "🏦 Account", "💳 Transactions", "✅ Approvals", "🤖 Agents", "📚 RAG", "🧠 Memory", "🧰 MCP Tools",
          "🚦 Security Gateway", "⚔️ Attack Lab", "📑 Agent Trace", "📜 Audit", "📄 Reports", "🩺 System Health"]
 
 
@@ -22,10 +23,19 @@ def _authed_app():
     return at
 
 
+def _go(at, page):
+    """Main pages live in the radio; everything else is under the 'Other' dropdown."""
+    if page in MAIN_PAGES:
+        at.sidebar.radio(key="nav_radio").set_value(page).run()
+    else:
+        at.sidebar.selectbox(key="more_pick").set_value(page).run()
+    return at
+
+
 @pytest.mark.parametrize("page", PAGES)
 def test_page_renders(page):
     at = _authed_app().run()
-    at.sidebar.radio(key="nav_radio").set_value(page).run()
+    _go(at, page)
     assert not at.exception, [e.value for e in at.exception]
 
 
@@ -36,7 +46,7 @@ def test_owasp_page_renders_and_launches(asi):
               "ASI07": "ASI07 · Insecure Inter-Agent Comms", "ASI08": "ASI08 · Cascading Failures",
               "ASI09": "ASI09 · Human-Agent Trust Exploitation", "ASI10": "ASI10 · Rogue Agents"}
     at = _authed_app().run()
-    at.sidebar.selectbox(key="owasp_pick").set_value(labels[asi]).run()
+    at.sidebar.selectbox(key="more_pick").set_value(labels[asi]).run()
     assert not at.exception, [e.value for e in at.exception]
     assert asi in at.title[0].value
     launch = next(b for b in at.button if "Launch controlled test" in b.label)
@@ -72,7 +82,7 @@ def _open(sid):
     at = AppTest.from_file(str(APP), default_timeout=60)
     at.session_state["active_session_id"] = sid
     at.run()
-    at.sidebar.radio(key="nav_radio").set_value("✅ Approvals").run()
+    _go(at, "✅ Approvals")
     assert not at.exception, [e.value for e in at.exception]
     return at
 

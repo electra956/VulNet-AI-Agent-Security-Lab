@@ -40,6 +40,7 @@ CRITICAL SECURITY INVARIANTS:
 - AI Agent can NEVER approve its own transactions or override risk controls.
 """
 
+from fintech.beneficiaries import get_beneficiary_registry
 from datetime import datetime, timezone
 import logging
 import re
@@ -144,7 +145,7 @@ class TransactionLifecycleService:
                 amount = 0.0
 
         # Parse accounts
-        acct_matches = re.findall(r"\b(ACC-\d{4})\b", text, re.IGNORECASE)
+        acct_matches = re.findall(r"\b(ACC-\d{4,})\b", text, re.IGNORECASE)
         from_account = None
         to_account = None
 
@@ -402,6 +403,32 @@ class TransactionLifecycleService:
             self.fintech_service.repository.save_transaction(init_txn)
             tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="Identical source and destination")
             return self._build_transaction_response(init_txn, tracer, error_msg="Transfer destination cannot be the same as the source account.")
+
+        # STEP 12b: TRUSTED-BENEFICIARY CHECK (secure mode). Money may only go to the customer's own accounts or to a
+        # payee the customer added on the Pay page. Deterministic, outside the LLM, and not editable from chat.
+        if mode == "secure":
+            own = set(user_accounts)
+            dest_exists = self.fintech_service.repository.get_account(to_acct) is not None
+            if to_acct not in own and (
+                not dest_exists or not get_beneficiary_registry().is_trusted(user_id, to_acct)
+            ):
+                why = (f"Destination account '{to_acct}' does not exist." if not dest_exists
+                       else f"Destination account '{to_acct}' is not one of your trusted payees.")
+                init_txn.transition_to(TransactionStatus.REJECTED, reason=why)
+                self.fintech_service.repository.save_transaction(init_txn)
+                tracer.record_stage("Beneficiary Check", status=StageStatus.BLOCKED.value, details=why)
+                tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="Untrusted beneficiary")
+                self._log_audit_event(
+                    req_id=req_id, sess_id=sess_id, user_id=user_id,
+                    action="create_simulated_transaction", decision="REJECT",
+                    status="rejected", risk="HIGH", account_id=from_acct,
+                    reason=f"Beneficiary check failed: {why}"
+                )
+                return self._build_transaction_response(
+                    init_txn, tracer,
+                    error_msg=f"Transfer blocked: {why}" + ("" if not dest_exists else " Add the account under **Pay → Trusted payees** first, then try again.")
+                )
+            tracer.record_stage("Beneficiary Check", status=StageStatus.SUCCESS.value, details=f"{to_acct} is a trusted destination")
 
         if amount <= 0:
             init_txn.transition_to(TransactionStatus.REJECTED, reason=f"Amount must be positive, got {amount}.")

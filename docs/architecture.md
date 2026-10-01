@@ -65,7 +65,7 @@ USER ─▶ Streamlit dashboard :8501 ──(in-process)──┐
 * **MCP tool suite** (`FinTechToolSuite`): its own copy of accounts/cards/tickets, synced from the ledger before each MCP execution.
   This remains a duplicate store (see gaps).
 * **Vector stores**: `data/vector_store.json` (chat), `data/lab_vector_store.json` (lab).
-* **Chat history**: `data/chat_history/<user>.json` (dashboard only).
+* **Chat history**: `data/chat_history/<user>/<conversation>.json`, one file per chat (dashboard only); every login starts a new chat and earlier ones appear under Chat History in the sidebar.
 * **Audit**: `logs/audit.jsonl`. **Reports**: `reports/`.
 
 ## Lab runtime

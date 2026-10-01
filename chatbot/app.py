@@ -75,15 +75,9 @@ if not current_session:
         session_id=st.session_state.active_session_id,
     )
 
-# Persistent chat history: restore the user's last conversation once per browser session
+# Persistent chat history: every login starts a NEW chat; earlier chats are listed in the sidebar History.
 from chatbot.sessions.history_store import ChatHistoryStore
 _history = ChatHistoryStore()
-if not st.session_state.get("history_loaded"):
-    _saved = _history.load(current_session.user_id)
-    if _saved and not current_session.messages:
-        current_session.messages = list(_saved["messages"])
-        current_session.conversation_id = _saved.get("conversation_id", current_session.conversation_id)
-    st.session_state.history_loaded = True
 
 if "messages" not in st.session_state:
     st.session_state.messages = current_session.get_messages()
@@ -107,6 +101,12 @@ selected_view = render_sidebar(st.session_state.session_manager, current_session
 # ============================================================
 if selected_view == "💬 Chat":
     render_chat_view(st.session_state.session_manager, current_session)
+elif selected_view == "💸 Pay":
+    from chatbot.components.pay import render_pay_view
+    render_pay_view(current_session)
+elif selected_view == "👤 Profile":
+    from chatbot.components.profile import render_profile_view
+    render_profile_view(current_session)
 elif selected_view == "🏦 Account":
     render_account_view(current_session)
 elif selected_view == "💳 Transactions":

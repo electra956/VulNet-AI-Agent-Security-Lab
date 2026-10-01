@@ -60,6 +60,14 @@ goal scope (GoalGuard) → tool whitelist → argument schema / injection scan /
   perimeter are therefore routed to the deterministic lab pipeline in Vulnerable mode so the simulation is visible (see
   `api/routes/chat.py`, `chatbot/components/chat.py`).
 
+### Trusted payees (secure mode)
+
+In Secure Mode a transfer is only allowed to the customer's own accounts or to a **trusted payee**. Unknown accounts (including
+malformed ids such as `ACC-10001`) and real-but-untrusted accounts are rejected in the transaction lifecycle with an audit record, before any
+money moves. The check is deterministic code outside the LLM, and payees can only be added or removed on the dashboard's **Pay → Trusted payees**
+panel, never from a chat message, so an injected prompt cannot add an attacker's account. Defaults: Alex (`CUST-001`) trusts `ACC-2001`, Jordan
+(`CUST-002`) trusts `ACC-1001`. State is stored in `data/beneficiaries.json` (`VULNET_BENEFICIARY_FILE` overrides it). Vulnerable Mode skips the check.
+
 ## 5. Defence in depth ("assume breach")
 
 The secure runs of the lab include **assume-breach probes**: after one control stops an attack, the raw attack is handed to the next

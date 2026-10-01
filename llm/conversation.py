@@ -385,7 +385,7 @@ class ConversationEngine:
             src = args.get("source_account") or ctx.get("account_id") or "ACC-1001"
             dst = args.get("destination_account", "")
             amount = float(args.get("amount", 0) or 0)
-            normalized = f"Transfer ₹{amount:,.2f} from {src} to {dst}"  # executes exactly what was validated
+            normalized = f"Transfer ${amount:,.2f} from {src} to {dst}"  # executes exactly what was validated
             pipe = self.orch.process(normalized, session_context=session_ctx)
             return ToolOutcome("success", pipe.get("final_response", "Transfer initiated."))
         if name == "get_security_status":
@@ -465,6 +465,8 @@ class ConversationEngine:
 
             if resp.is_fallback:
                 break  # the simulator cannot synthesise; show verified tool output directly
+            if any(n in STATE_CHANGING_TOOLS for n in outcome_names):
+                break  # money-moving results are shown verbatim, so a second LLM call would be wasted time
             messages.append(ChatMessage(
                 role="system",
                 content="Answer the user's request using ONLY the tool results above. Do not invent figures, "
@@ -480,7 +482,10 @@ class ConversationEngine:
             return result
 
         model_text = scrub_model_text(resp.content or "")
-        if outcomes:
+        if outcomes and any(n in STATE_CHANGING_TOOLS for n in outcome_names):
+            # Money moved (or was refused) by a tool: show the verified result, never the model's paraphrase.
+            result.text = "\n\n".join(o.text for o in outcomes)
+        elif outcomes:
             tool_texts = [plain_text(o.text) for o in outcomes]
             if model_text and figures_grounded(model_text, tool_texts):
                 result.text = model_text

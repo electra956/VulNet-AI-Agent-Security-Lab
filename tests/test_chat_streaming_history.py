@@ -169,3 +169,20 @@ def test_completed_transfer_is_visible_in_every_view_of_the_ledger():
     assert svc.get_balance("CUST-001", "ACC-1001")["balance"] == round(before - 25, 2)
     assert any(t.transaction_id == res["transaction_id"] for t in svc.get_transaction_history("CUST-001", "ACC-1001"))
     reset_shared_fintech_service()
+
+
+def test_history_store_keeps_many_conversations_newest_first(tmp_path):
+    st = ChatHistoryStore(tmp_path)
+    st.save("CUST-001", "CONV-A", [{"role": "user", "content": "first question"}])
+    st.save("CUST-001", "CONV-B", [{"role": "user", "content": "x" * 100}, {"role": "assistant", "content": "ok"}])
+    st.save("CUST-002", "CONV-Z", [{"role": "user", "content": "someone else"}])
+    chats = st.list("CUST-001")
+    assert [c["conversation_id"] for c in chats] == ["CONV-B", "CONV-A"]
+    assert chats[1]["title"] == "first question" and chats[0]["title"].endswith("…") and chats[0]["count"] == 2
+    assert st.load("CUST-001", "CONV-A")["messages"][0]["content"] == "first question"
+    assert st.load("CUST-001")["conversation_id"] == "CONV-B"       # latest when no id given
+    assert st.list("CUST-002")[0]["conversation_id"] == "CONV-Z"
+    st.delete("CUST-001", "CONV-B")
+    assert [c["conversation_id"] for c in st.list("CUST-001")] == ["CONV-A"]
+    st.save("CUST-001", "CONV-A", [])                                 # emptying a chat removes it
+    assert st.list("CUST-001") == []

@@ -4,6 +4,7 @@ Displays simulated customer context, session identifiers, security controls,
 and navigation routing.
 """
 
+import uuid
 from typing import Any, Dict
 import streamlit as st
 from agents.orchestrator import AgentOrchestrator
@@ -60,23 +61,59 @@ def render_sidebar(session_manager, current_session) -> str:
             unsafe_allow_html=True
         )
 
-        if st.button("➕ New Conversation", use_container_width=True):
-            current_session.messages.clear()
-            from chatbot.sessions.history_store import ChatHistoryStore
-            ChatHistoryStore().clear(current_session.user_id)
-            st.session_state.messages = []
+        from chatbot.sessions.history_store import ChatHistoryStore
+        history = ChatHistoryStore()
+
+        def _reset_chat_state() -> None:
             st.session_state.scenario_result = None
             st.session_state.pending_prompt = None
             st.session_state.orchestrator = AgentOrchestrator(mode=st.session_state.security_mode)
+            st.session_state.nav_view = "💬 Chat"
+            st.session_state.nav_radio = "💬 Chat"
+            st.session_state.more_pick = "—"
+
+        if st.button("➕ New Chat", use_container_width=True):
+            # The current chat is already saved after every turn; just start a fresh one.
+            history.save(current_session.user_id, current_session.conversation_id, current_session.get_messages())
+            current_session.messages.clear()
+            current_session.conversation_id = f"CONV-{uuid.uuid4().hex[:8].upper()}"
+            st.session_state.messages = []
+            _reset_chat_state()
             st.rerun()
 
+        past = [c for c in history.list(current_session.user_id)]
+        if past:
+            st.markdown(
+                """<div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #9CA3AF;
+                letter-spacing: 0.05em; margin: 8px 0 2px 0;">Chat History</div>""",
+                unsafe_allow_html=True,
+            )
+            for c in past[:15]:
+                active = c["conversation_id"] == current_session.conversation_id
+                col_open, col_del = st.columns([5, 1])
+                with col_open:
+                    if st.button(("● " if active else "") + c["title"], key=f"hist_open_{c['conversation_id']}",
+                                 use_container_width=True, help=f"{c['count']} messages", disabled=active):
+                        saved = history.load(current_session.user_id, c["conversation_id"])
+                        if saved:
+                            history.save(current_session.user_id, current_session.conversation_id, current_session.get_messages())
+                            current_session.messages = list(saved["messages"])
+                            current_session.conversation_id = c["conversation_id"]
+                            st.session_state.messages = current_session.get_messages()
+                            _reset_chat_state()
+                            st.rerun()
+                with col_del:
+                    if st.button("🗑", key=f"hist_del_{c['conversation_id']}", help="Delete this chat"):
+                        history.delete(current_session.user_id, c["conversation_id"])
+                        if active:
+                            current_session.messages.clear()
+                            current_session.conversation_id = f"CONV-{uuid.uuid4().hex[:8].upper()}"
+                            st.session_state.messages = []
+                        st.rerun()
+
         if st.button("🚪 Sign out", use_container_width=True):
-            from auth.authentication import get_auth_service
-            get_auth_service().logout(st.session_state.get("active_session_id", ""))
-            for key in list(st.session_state.keys()):
-                if key not in ("session_manager",):
-                    del st.session_state[key]
-            st.rerun()
+            from chatbot.components.profile import sign_out
+            sign_out()
 
         st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
 
@@ -90,32 +127,24 @@ def render_sidebar(session_manager, current_session) -> str:
             unsafe_allow_html=True
         )
 
-        nav_options = [
-            "💬 Chat",
-            "👥 Users",
-            "🏦 Account",
-            "💳 Transactions",
-            "✅ Approvals",
-            "🤖 Agents",
-            "📚 RAG",
-            "🧠 Memory",
-            "🧰 MCP Tools",
-            "🚦 Security Gateway",
-            "⚔️ Attack Lab",
-            "📑 Agent Trace",
-            "📜 Audit",
-            "📄 Reports",
-            "🩺 System Health",
+        nav_options = ["💬 Chat", "💸 Pay", "👤 Profile", "🏦 Account", "💳 Transactions"]
+        more_pages = [
+            "👥 Users", "✅ Approvals", "🤖 Agents", "📚 RAG", "🧠 Memory", "🧰 MCP Tools",
+            "🚦 Security Gateway", "⚔️ Attack Lab", "📑 Agent Trace", "📜 Audit", "📄 Reports", "🩺 System Health",
         ]
-        owasp_options = ["—"] + [
+        owasp_pages = [
             "ASI01 · Agent Goal Hijack", "ASI02 · Tool Misuse & Exploitation", "ASI03 · Identity & Privilege Abuse",
             "ASI04 · Agentic Supply Chain", "ASI05 · Unexpected Code Execution", "ASI06 · Memory & Context Poisoning",
             "ASI07 · Insecure Inter-Agent Comms", "ASI08 · Cascading Failures", "ASI09 · Human-Agent Trust Exploitation",
             "ASI10 · Rogue Agents",
         ]
+        more_options = ["—"] + more_pages + owasp_pages
 
-        def _clear_owasp() -> None:
-            st.session_state.owasp_pick = "—"
+        def _clear_more() -> None:
+            st.session_state.more_pick = "—"
+
+        def _clear_main() -> None:
+            st.session_state.nav_radio = None
 
         current_nav = st.session_state.get("nav_view", "💬 Chat")
         default_idx = nav_options.index(current_nav) if current_nav in nav_options else 0
@@ -123,22 +152,25 @@ def render_sidebar(session_manager, current_session) -> str:
         selected_nav = st.radio(
             "FinTech Navigation Menu",
             nav_options,
-            index=default_idx,
+            index=0 if "nav_radio" in st.session_state else default_idx,  # state wins once the widget exists
             label_visibility="collapsed",
             key="nav_radio",
-            on_change=_clear_owasp,
+            on_change=_clear_more,
         )
         st.markdown(
             """
             <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #9CA3AF; letter-spacing: 0.05em; margin: 8px 0 2px 0;">
-                OWASP Agentic Top 10 (2026)
+                Other
             </div>
             """,
             unsafe_allow_html=True
         )
-        owasp_pick = st.selectbox("OWASP category page", owasp_options, key="owasp_pick", label_visibility="collapsed")
-        if owasp_pick != "—":
-            selected_nav = "OWASP " + owasp_pick.split(" ")[0]
+        more_pick = st.selectbox("Other pages", more_options, key="more_pick", label_visibility="collapsed",
+                                 on_change=_clear_main)
+        if more_pick != "—":
+            selected_nav = ("OWASP " + more_pick.split(" ")[0]) if more_pick.startswith("ASI") else more_pick
+        elif selected_nav is None:
+            selected_nav = current_nav if current_nav in nav_options else "💬 Chat"
         st.session_state.nav_view = selected_nav
 
         st.divider()

@@ -94,3 +94,45 @@ def test_risk_block_cannot_be_overridden_by_human_approval():
     assert out["status"] == "blocked" and "Risk policy" in out["reason"]
     assert _bal(svc) == 12850.00
     assert svc.repository.get_transaction(res["transaction_id"]).status == "REJECTED"
+
+
+# ---------------------------------------------------------------------------
+# Trusted-beneficiary check (secure mode)
+# ---------------------------------------------------------------------------
+
+def _transfer(text, mode="secure", user="CUST-001"):
+    from fintech.service import reset_shared_fintech_service
+    from fintech.beneficiaries import get_beneficiary_registry
+    from fintech.transaction_lifecycle import get_transaction_lifecycle_service
+    reset_shared_fintech_service()
+    get_beneficiary_registry().reset()
+    return get_transaction_lifecycle_service().process_transaction_request(
+        text, mode=mode,
+        user_context={"user_id": user, "role": "customer", "account_ids": ["ACC-1001", "ACC-1002"], "session_id": "S-B", "request_id": "R-B"})
+
+
+def test_secure_mode_allows_trusted_payee_and_own_accounts():
+    assert _transfer("Transfer $25 from ACC-1001 to ACC-2001")["status"] == "COMPLETED"      # seeded trusted payee
+    assert _transfer("Transfer $25 from ACC-1001 to ACC-1002")["status"] == "COMPLETED"      # own account
+
+
+def test_secure_mode_blocks_unknown_and_untrusted_destinations():
+    from fintech.service import get_shared_fintech_service
+    svc = get_shared_fintech_service()
+    for dest in ("ACC-2002", "ACC-9999", "ACC-10001"):          # untrusted real / nonexistent / 5-digit id
+        res = _transfer(f"Transfer $25 from ACC-1001 to {dest}")
+        assert res["status"] == "REJECTED", dest
+        assert "Trusted payees" in res["error"] or "trusted" in res["error"].lower() or "does not exist" in res["error"]
+        assert svc.get_balance("CUST-001", "ACC-1001")["balance"] == 5420.50       # nothing moved
+
+
+def test_adding_a_trusted_payee_unblocks_it_and_vulnerable_mode_skips_the_check():
+    from fintech.beneficiaries import get_beneficiary_registry
+    assert _transfer("Transfer $25 from ACC-1001 to ACC-2002")["status"] == "REJECTED"
+    get_beneficiary_registry().add("CUST-001", "ACC-2002")
+    from fintech.transaction_lifecycle import get_transaction_lifecycle_service
+    res = get_transaction_lifecycle_service().process_transaction_request(
+        "Transfer $25 from ACC-1001 to ACC-2002", mode="secure",
+        user_context={"user_id": "CUST-001", "role": "customer", "account_ids": ["ACC-1001", "ACC-1002"], "session_id": "S", "request_id": "R"})
+    assert res["status"] == "COMPLETED"
+    assert _transfer("Transfer $25 from ACC-1001 to ACC-2002", mode="vulnerable")["status"] == "COMPLETED"

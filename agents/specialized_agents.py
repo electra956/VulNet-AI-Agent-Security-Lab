@@ -203,9 +203,9 @@ class TransactionAgent(BaseFinTechAgent):
                 amount_val = 0.0
 
         # Parse accounts
-        acct_from_match = re.search(r"from\s+(ACC-\d{4})", request, re.IGNORECASE)
-        acct_to_match = re.search(r"to\s+(ACC-\d{4})", request, re.IGNORECASE)
-        all_accts = re.findall(r"\b(ACC-\d{4})\b", request, re.IGNORECASE)
+        acct_from_match = re.search(r"from\s+(ACC-\d{4,})", request, re.IGNORECASE)
+        acct_to_match = re.search(r"to\s+(ACC-\d{4,})", request, re.IGNORECASE)
+        all_accts = re.findall(r"\b(ACC-\d{4,})\b", request, re.IGNORECASE)
 
         source_account = accounts[0] if accounts else "ACC-1001"
         destination_account = "ACC-2001" if source_account != "ACC-2001" else "ACC-1002"
