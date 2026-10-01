@@ -78,17 +78,19 @@ Write-Host "`n[6/6] Verifying Local LLM Model..." -ForegroundColor Yellow
 if ($ollamaInstalled) {
     try {
         $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -Method Get -TimeoutSec 2 -ErrorAction SilentlyContinue
-        $hasLlama = $false
-        if ($tags -and $tags.models) {
-            foreach ($m in $tags.models) {
-                if ($m.name -like "*llama3.2*") { $hasLlama = $true }
+        foreach ($model in @("llama3.2", "nomic-embed-text")) {
+            $has = $false
+            if ($tags -and $tags.models) {
+                foreach ($m in $tags.models) {
+                    if ($m.name -like "*$model*") { $has = $true }
+                }
             }
-        }
-        if (-not $hasLlama) {
-            Write-Host "Pulling llama3.2 model in background..." -ForegroundColor Cyan
-            Start-Process -FilePath "ollama" -ArgumentList "pull llama3.2" -NoNewWindow
-        } else {
-            Write-Host "Model llama3.2 is ready!" -ForegroundColor Green
+            if (-not $has) {
+                Write-Host "Pulling $model model..." -ForegroundColor Cyan
+                & ollama pull $model
+            } else {
+                Write-Host "Model $model is ready!" -ForegroundColor Green
+            }
         }
     } catch {
         Write-Host "Ollama service is not running yet. Run 'ollama serve' or start Ollama from the start menu to enable real Llama generation." -ForegroundColor Yellow

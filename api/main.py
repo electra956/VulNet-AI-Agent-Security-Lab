@@ -36,7 +36,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from security import settings
-from api.routes import health, chat, account, security, auth
+from api.routes import health, chat, account, security, auth, lab, approvals
 from chatbot.sessions.session_manager import SessionManager
 
 # Configure sanitized logging
@@ -151,6 +151,8 @@ app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(account.router)
 app.include_router(security.router)
+app.include_router(lab.router)
+app.include_router(approvals.router)
 
 
 @app.get("/", tags=["Root"])

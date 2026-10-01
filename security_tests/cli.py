@@ -124,6 +124,20 @@ def run_prompt_injection_cli(args: argparse.Namespace) -> int:
     return 0 if total_failed == 0 else 1
 
 
+def run_owasp_cli(args: argparse.Namespace) -> int:
+    """Run the executable OWASP Agentic lab tests and print a status table."""
+    from lab.runner import run_all, summarize
+    cat = None if args.category.lower() == "all" else args.category
+    records = run_all(cat, use_llm=getattr(args, "llm", False))
+    if getattr(args, "json", False):
+        print(json.dumps({"summary": summarize(records), "tests": [r.to_dict() for r in records]}, indent=2, default=str))
+    else:
+        for r in records:
+            print(f"{r.status:10} {r.test_id:36} control={r.security_control}  trace={r.trace_id}")
+        print(json.dumps(summarize(records)))
+    return 0 if records and all(r.status in ("PASS", "SIMULATED") for r in records) else 1
+
+
 def main() -> None:
     """Main CLI entrypoint."""
     # Ensure UTF-8 stdout encoding on Windows
@@ -174,8 +188,15 @@ def main() -> None:
         help="Security mode for testing (default: secure)"
     )
 
+    ow = subparsers.add_parser("owasp", help="Run the executable OWASP Agentic Top 10 lab tests (vulnerable vs secure)")
+    ow.add_argument("--category", "-c", default="all", help="ASI01..ASI10 or all")
+    ow.add_argument("--json", "-j", action="store_true", help="Structured JSON output")
+    ow.add_argument("--llm", action="store_true", help="Let the real local Ollama model make the agent's decisions")
+
     args = parser.parse_args()
 
+    if args.command == "owasp":
+        sys.exit(run_owasp_cli(args))
     if args.command in ("prompt-injection", None):
         exit_code = run_prompt_injection_cli(args)
         sys.exit(exit_code)

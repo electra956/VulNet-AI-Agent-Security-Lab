@@ -13,17 +13,13 @@ from fintech.models import (
     CustomerNotFoundError,
     UnauthorizedAccessError,
 )
-from fintech.service import FintechService
+from fintech.service import FintechService, get_shared_fintech_service
 
 logger = logging.getLogger("vulnet.api.account")
 router = APIRouter(tags=["Account"])
 
-# Shared service instance
-_fintech_service = FintechService()
-
-
 def get_fintech_service() -> FintechService:
-    return _fintech_service
+    return get_shared_fintech_service()
 
 
 @router.get("/account/{account_id}", response_model=AccountResponse)

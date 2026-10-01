@@ -715,4 +715,38 @@ def create_default_registry(fintech_suite: Optional[FinTechToolSuite] = None) ->
         handler=ft.send_simulated_notification
     ))
 
+    # -- Lab additions: remaining spec tools ---------------------------------
+    _ok_out = {"required": ["status", "tool", "risk_level", "result"]}
+    registry.register(ToolMetadata(
+        name="get_transaction", description="Retrieve one transaction the caller is party to.",
+        risk_level="LOW", allowed_roles=["CUSTOMER", "SUPPORT_AGENT", "FRAUD_ANALYST", "COMPLIANCE_ANALYST", "ADMIN", "USER"],
+        input_schema={"properties": {"transaction_id": {"type": "string"}, "customer_id": {"type": "string"}},
+                      "required": ["transaction_id"]},
+        output_schema=_ok_out, handler=ft.get_transaction))
+    registry.register(ToolMetadata(
+        name="cancel_simulated_transaction", description="Reverse a completed simulated transaction (ledger rollback).",
+        risk_level="MEDIUM", allowed_roles=["FRAUD_ANALYST", "ADMIN", "USER"],
+        input_schema={"properties": {"transaction_id": {"type": "string"}, "customer_id": {"type": "string"},
+                                     "reason": {"type": "string"}}, "required": ["transaction_id"]},
+        output_schema=_ok_out, handler=ft.cancel_simulated_transaction))
+    registry.register(ToolMetadata(
+        name="create_simulated_payment", description="Create a simulated payment (risk + approval enforced).",
+        risk_level="HIGH", allowed_roles=["CUSTOMER", "ADMIN", "USER"], requires_approval=True,
+        input_schema={"properties": {"from_account": {"type": "string"}, "to_account": {"type": "string"},
+                                     "amount": {"type": "number"}, "customer_id": {"type": "string"}},
+                      "required": ["from_account", "to_account", "amount"]},
+        output_schema={"required": ["status", "tool", "result"]}, handler=ft.create_simulated_payment))
+    registry.register(ToolMetadata(
+        name="get_payment_status", description="Status of a scheduled or completed simulated payment.",
+        risk_level="LOW", allowed_roles=["CUSTOMER", "SUPPORT_AGENT", "FRAUD_ANALYST", "ADMIN", "USER"],
+        input_schema={"properties": {"payment_id": {"type": "string"}, "customer_id": {"type": "string"}},
+                      "required": ["payment_id"]},
+        output_schema=_ok_out, handler=ft.get_payment_status))
+    registry.register(ToolMetadata(
+        name="cancel_simulated_payment", description="Cancel a scheduled simulated payment.",
+        risk_level="MEDIUM", allowed_roles=["CUSTOMER", "SUPPORT_AGENT", "FRAUD_ANALYST", "ADMIN", "USER"],
+        input_schema={"properties": {"payment_id": {"type": "string"}, "customer_id": {"type": "string"}},
+                      "required": ["payment_id"]},
+        output_schema=_ok_out, handler=ft.cancel_simulated_payment))
+
     return registry

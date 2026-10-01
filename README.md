@@ -1,4 +1,4 @@
-# 🛡️ VulNet FinTech AI Agent Security Lab (Level 2)
+# 🛡️ VulNet FinTech AI Agent Security Lab (v3.1 — Attack Lab)
 
 > **A safe, local educational environment for exploring security risks in Agentic AI systems within a simulated FinTech banking domain.**
 
@@ -40,6 +40,54 @@ The lab provides **Secure Mode** and **Vulnerable Mode**, allowing security cont
 
 ---
 
+# ⚔️ Attack Lab (new in 3.1)
+
+A locally runnable AI-agent security laboratory: talk to a real local LLM, watch tools, MCP, RBAC, risk and human approval work, then
+launch **ASI01–ASI10** attacks and see exactly which control blocked (or failed to block) them.
+
+```bash
+./start.sh                         # Ollama (if installed) + API :8000 + dashboard :8501   (./start.sh stop | status | test | report)
+```
+
+Open http://localhost:8501, sign in (demo users in [docs/demo-guide.md](docs/demo-guide.md)), then:
+
+* **💬 Chat** — real `llama3.2`, streamed answers, hybrid RAG with citations, `Remember that …` provenance memory, guarded tool calls,
+  transfers through a 24-step lifecycle. High-risk transfers wait on **✅ Approvals** for a human (Support / Fraud / Admin).
+* **⚔️ Attack Lab** and ten **OWASP Agentic Top 10** pages — choose category, scenario, secure/vulnerable/compare, edit the payload, optionally let
+  the real Ollama model decide, launch. You see the 12-stage path `ATTACK INPUT → AGENT → RAG/MEMORY → TOOL REQUEST → GUARDRAIL → RBAC → RISK →
+  APPROVAL → MCP → TOOL → RESULT → AUDIT`, the ledger impact, the controls that acted, the agent communication trace, the cascade graph,
+  the approval screen and the AIBOM.
+* **Users · Agents · RAG · Memory · MCP Tools · Security Gateway · Audit · Reports · System Health** — inspect every subsystem live.
+
+```bash
+python -m lab list
+python -m lab run ASI01 direct --mode vulnerable      # attack works (inside the synthetic lab)
+python -m lab run ASI01 direct --mode secure          # named control stops it
+python -m lab test                                    # all 47 tests: vulnerable + secure, statuses derived from the runs
+python -m lab report                                  # reports/security_report.md|json, owasp_agentic_report.md
+python -m security_tests owasp -c ASI07
+```
+
+| ID | Category (official OWASP Agentic 2026 name) | Variants | Status |
+|---|---|---|---|
+| ASI01 | Agent Goal Hijack | direct · RAG-indirect · multi-turn · role manipulation · reflection | REAL |
+| ASI02 | Tool Misuse & Exploitation | privileged tool · malformed args · excessive calls · unauthorized txn · outside role | REAL |
+| ASI03 | Identity & Privilege Abuse | cross-customer · impersonation · role confusion · privilege escalation · cross-user txn | REAL |
+| ASI04 | Agentic Supply Chain Vulnerabilities | poisoned tool metadata · hash · version · provenance · poisoned plugin · AIBOM | SIMULATED (local fixtures) |
+| ASI05 | Unexpected Code Execution (RCE) | command injection · exfiltration · resource exhaustion · path traversal · legitimate use | SIMULATED attack / REAL sandbox |
+| ASI06 | Memory & Context Poisoning | delayed instruction · poisoned preference · false history · RAG→memory | REAL |
+| ASI07 | Insecure Inter-Agent Communication | spoofed · forged · modified · malicious relayed instruction · unauthorized · replay | REAL |
+| ASI08 | Cascading Failures | malformed result · dependency timeout · low confidence · corrupted FraudAgent state | REAL |
+| ASI09 | Human-Agent Trust Exploitation | persuasive justification · overconfident risk · hidden recurring scope | REAL (scripted human in automation) |
+| ASI10 | Rogue Agents | full drift · exceed objective · unauthorized contact · suppress result | REAL |
+
+**Safety boundary:** everything is local and synthetic — no real bank, customer, credential, host command or network. ASI05 never
+executes attacker text on the host (tests booby-trap `os.system`/`subprocess`/`eval`/`exec` to prove it). PASS means a control stops that
+attack class *in this architecture*; the vulnerable side is deliberately weak code. See [docs/security-model.md](docs/security-model.md),
+[docs/project-status.md](docs/project-status.md) (what is REAL / PARTIAL / SIMULATED, known gaps) and [docs/architecture.md](docs/architecture.md).
+
+---
+
 # 🎯 Project Goals
 
 The goal of VulNet is to make Agentic AI security and financial application protections easier to understand through practical, reproducible demonstrations.
@@ -55,7 +103,7 @@ The project focuses on:
 - 🧭 **FinTech Agent Orchestrator**: Intent classification, task planning, and structured routing across 6 specialized domain agents without direct tool execution by Main Agent.
 - 📚 **Retrieval-Augmented Generation (RAG)**: Hybrid retrieval (real Ollama `nomic-embed-text` embeddings + TF-IDF) with indirect prompt injection defenses.
 - 🔌 **Model Context Protocol (MCP)**: Safe demo tool execution with RBAC and parameter sanitization.
-- 🚨 **OWASP Agentic Top 10**: Full coverage of ASI01 through ASI10 in both Secure and Vulnerable modes.
+- 🚨 **OWASP Top 10 for Agentic Applications (2026)**: 47 executable attack variants across ASI01–ASI10, each run in Vulnerable and Secure mode with a step-by-step trace, named controls, measured impact and audit records (see [docs/owasp-agentic-top10.md](docs/owasp-agentic-top10.md)).
 - 📊 **Security Event Telemetry**: Correlated audit logs, timeline profiling, and event tracing.
 - 🛡️ **FinTech RBAC & Authorization**: Strict permissions and resource ownership validation outside the LLM.
 - 🛡️ **AI Security Gateway**: Deterministic pre-agent perimeter with validation, threat detection, policy, and risk evaluation.
@@ -64,7 +112,7 @@ The project focuses on:
 - 📐 **Real Dense Vector RAG**: Persistent JSON vector store of 768-dimensional `nomic-embed-text` embeddings (model and content hash tracked per record), hybrid dense + lexical retrieval, and honest `tfidf-lexical` fallback when embeddings are unavailable.
 - 🔑 **Login Page**: the dashboard opens on a password + MFA sign-in with one-click demo accounts and a sign-out button (see [docs/demo-guide.md](docs/demo-guide.md)).
 - 🔒 **Real-World Hardening**: server-side mode policy, random expiring sessions, login lockout, CORS allow-list, gated MFA code (see [docs/hardening.md](docs/hardening.md)).
-- 🧪 **Comprehensive Testing**: 396 automated tests with 100% pass rate across 41 test suites, including automated prompt injection and canary exfiltration regression suites.
+- 🧪 **Comprehensive Testing**: 667 automated tests (see [docs/testing.md](docs/testing.md)), including the executable OWASP lab, prompt-injection and canary-exfiltration suites, ASI05 host-safety tests, dashboard `AppTest`s and human-approval workflow tests.
 - 🎯 **Automated Prompt Injection Testing**: Deterministic security evaluation harness (`security_tests/`) covering direct injection, indirect RAG poisoning, tool parameter manipulation, and secret exfiltration mapped to OWASP ASI01–ASI10.
 
 ---
@@ -526,7 +574,7 @@ vulnerabilities/
 
 # 🧪 Testing
 
-The project contains **396 deterministic automated unit, integration, and security tests** across all components, API endpoints, authentication flows, banking domains, guardrails, and OWASP scenarios with a 100% pass rate.
+The project contains **667 automated unit, integration, security and UI tests** across all components, API endpoints, authentication flows, banking domains, guardrails, and OWASP scenarios with a 100% pass rate.
 
 ### Automated Test Execution
 
@@ -692,7 +740,7 @@ VulNet-AI-Agent-Security-Lab/
 │       ├── secret_exfiltration.py    # 6 secret & token exfiltration test cases
 │       └── owasp_asi.py              # OWASP ASI01-ASI10 mapped master test suite
 │
-├── tests/                            # Automated Pytest Test Suites (396 tests)
+├── tests/                            # Automated Pytest Test Suites
 │   ├── __init__.py
 │   ├── security/                     # Dedicated Prompt Injection Pytest Suites (25 tests)
 │   │   ├── __init__.py
@@ -779,6 +827,7 @@ You need:
 - FastAPI & Uvicorn
 - Streamlit
 - Linux / WSL / macOS / Windows
+- [Ollama](https://ollama.com) (optional, for the real LLM and embeddings; see [Ollama Setup](#-ollama-setup-local-llm))
 
 ---
 
@@ -801,7 +850,9 @@ Check Python:
 python3 --version
 ```
 
-Run the automated setup:
+**One command (installs on first run, then starts everything):** `./start.sh` — then open http://localhost:8501.
+
+Or step by step. Run the automated setup (also installs Ollama and pulls `llama3.2` + `nomic-embed-text` when possible):
 
 ```bash
 chmod +x setup.sh
@@ -814,7 +865,7 @@ Activate the environment:
 source venv/bin/activate
 ```
 
-Start the services (run each in a separate terminal):
+Start the services (run each in a separate terminal). Start Ollama first (`ollama serve`, see [Ollama Setup](#-ollama-setup-local-llm)):
 
 **Terminal 1 — FastAPI API Gateway (Backend):**
 ```bash
@@ -861,6 +912,65 @@ streamlit run chatbot\app.py
 
 ---
 
+# 🦙 Ollama Setup (Local LLM)
+
+VulNet uses [Ollama](https://ollama.com) for real LLM chat (`llama3.2`) and RAG embeddings (`nomic-embed-text`). Ollama is optional: without it, the lab falls back to a labelled offline simulator. `setup.sh` / `setup.ps1` attempt steps 1-3 automatically; follow them manually if that fails.
+
+## 1. Install Ollama
+
+**Linux / WSL** (needs `curl` and `zstd`):
+
+```bash
+sudo apt-get install -y curl zstd
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+**macOS:** install from [ollama.com/download](https://ollama.com/download) or `brew install ollama`.
+
+**Windows:** run the installer from [ollama.com/download/OllamaSetup.exe](https://ollama.com/download/OllamaSetup.exe). It starts Ollama automatically.
+
+Verify:
+
+```bash
+ollama --version
+```
+
+## 2. Start the Ollama server
+
+```bash
+ollama serve
+```
+
+Leave it running in its own terminal (on Windows/macOS the desktop app already runs it; on Linux the installer may register a systemd service, so `systemctl status ollama` is worth checking first). If port 11434 is already in use, Ollama is already running.
+
+## 3. Pull the required models
+
+```bash
+ollama pull llama3.2
+ollama pull nomic-embed-text
+ollama list
+```
+
+## 4. Configure `.env`
+
+Copy `.env.example` to `.env` if you haven't already, and make sure it contains:
+
+```bash
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3.2
+OLLAMA_EMBED_MODEL=nomic-embed-text
+```
+
+## 5. Verify Ollama is reachable
+
+```bash
+curl http://127.0.0.1:11434/api/tags
+```
+
+The response should list `llama3.2` and `nomic-embed-text`. Start (or restart) the API afterwards; chat replies labelled "Offline simulation" mean Ollama was unreachable.
+
+---
+
 # 🔧 Manual Installation
 
 If the automated setup script cannot be used, follow these steps.
@@ -891,7 +1001,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Run the test suite (396 tests):
+Run the test suite:
 
 ```bash
 pytest
@@ -935,7 +1045,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Run the test suite (396 tests):
+Run the test suite:
 
 ```powershell
 pytest
@@ -1255,7 +1365,7 @@ To enable real local LLM generation:
 ### Resilient Offline Mode (No Ollama Required)
 If Ollama is not installed or not running, the lab **automatically activates its local fallback simulation**. All FinTech workflows, RAG lookups, guardrails, and test suites execute with 100% functionality without network access or errors.
 
-### Testing the Full Suite (317 Tests)
+### Testing the Full Suite
 Run pytest with the local virtual environment:
 ```powershell
 .\venv_win\Scripts\python -m pytest

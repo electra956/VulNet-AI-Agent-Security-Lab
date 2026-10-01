@@ -62,6 +62,8 @@ def render_sidebar(session_manager, current_session) -> str:
 
         if st.button("➕ New Conversation", use_container_width=True):
             current_session.messages.clear()
+            from chatbot.sessions.history_store import ChatHistoryStore
+            ChatHistoryStore().clear(current_session.user_id)
             st.session_state.messages = []
             st.session_state.scenario_result = None
             st.session_state.pending_prompt = None
@@ -90,13 +92,31 @@ def render_sidebar(session_manager, current_session) -> str:
 
         nav_options = [
             "💬 Chat",
+            "👥 Users",
             "🏦 Account",
             "💳 Transactions",
-            "🛡️ Security",
-            "📑 Agent Trace"
+            "✅ Approvals",
+            "🤖 Agents",
+            "📚 RAG",
+            "🧠 Memory",
+            "🧰 MCP Tools",
+            "🚦 Security Gateway",
+            "⚔️ Attack Lab",
+            "📑 Agent Trace",
+            "📜 Audit",
+            "📄 Reports",
+            "🩺 System Health",
+        ]
+        owasp_options = ["—"] + [
+            "ASI01 · Agent Goal Hijack", "ASI02 · Tool Misuse & Exploitation", "ASI03 · Identity & Privilege Abuse",
+            "ASI04 · Agentic Supply Chain", "ASI05 · Unexpected Code Execution", "ASI06 · Memory & Context Poisoning",
+            "ASI07 · Insecure Inter-Agent Comms", "ASI08 · Cascading Failures", "ASI09 · Human-Agent Trust Exploitation",
+            "ASI10 · Rogue Agents",
         ]
 
-        # Determine index from session_state if previously selected
+        def _clear_owasp() -> None:
+            st.session_state.owasp_pick = "—"
+
         current_nav = st.session_state.get("nav_view", "💬 Chat")
         default_idx = nav_options.index(current_nav) if current_nav in nav_options else 0
 
@@ -104,8 +124,21 @@ def render_sidebar(session_manager, current_session) -> str:
             "FinTech Navigation Menu",
             nav_options,
             index=default_idx,
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            key="nav_radio",
+            on_change=_clear_owasp,
         )
+        st.markdown(
+            """
+            <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #9CA3AF; letter-spacing: 0.05em; margin: 8px 0 2px 0;">
+                OWASP Agentic Top 10 (2026)
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        owasp_pick = st.selectbox("OWASP category page", owasp_options, key="owasp_pick", label_visibility="collapsed")
+        if owasp_pick != "—":
+            selected_nav = "OWASP " + owasp_pick.split(" ")[0]
         st.session_state.nav_view = selected_nav
 
         st.divider()

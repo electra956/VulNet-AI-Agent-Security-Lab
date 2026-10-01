@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import streamlit as st
 
 from chatbot.sessions.session_manager import SessionManager, Session
-from fintech.service import FintechService
+from fintech.service import FintechService, get_shared_fintech_service
 from fintech.models import (
     CustomerNotFoundError,
     AccountNotFoundError,
@@ -27,19 +27,9 @@ from security.guardrails import GuardrailDecision
 from llm.conversation import ConversationEngine, ToolOutcome, TurnResult
 
 
-_cached_service = None
-
 def get_fintech_service() -> FintechService:
-    """Retrieve or create the FintechService singleton in session state or fallback."""
-    global _cached_service
-    try:
-        if "fintech_service" not in st.session_state:
-            st.session_state.fintech_service = FintechService()
-        return st.session_state.fintech_service
-    except Exception:
-        if _cached_service is None:
-            _cached_service = FintechService()
-        return _cached_service
+    """The single process-wide synthetic ledger (shared with the API layer and the transaction lifecycle)."""
+    return get_shared_fintech_service()
 
 
 def is_fintech_greeting(message: str) -> bool:
@@ -558,11 +548,21 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
             with st.chat_message("assistant"):
                 with st.spinner("VulNet FinTech AI Agent reasoning..."):
                     pipeline_keywords = ["pipeline", "audit summary", "active defenses", "asi01", "asi02"]
-                    if any(w in user_input.lower() for w in pipeline_keywords):
-                        # Explicit multi-agent pipeline demo (deterministic agents, not an LLM answer)
+                    vulnerable_attack = mode == "vulnerable" and bool(security_eval.get("is_simulation"))
+                    if vulnerable_attack or any(w in user_input.lower() for w in pipeline_keywords):
+                        # Lab pipeline: an attack the perimeter let through in Vulnerable mode, or an explicit
+                        # multi-agent demo (deterministic agents, not an LLM answer, so the simulation is shown)
                         pipe_res = st.session_state.orchestrator.process(user_input, session_context=session_ctx)
                         turn = TurnResult(text=format_fintech_pipeline_response(pipe_res, mode, req_id),
                                           model="multi-agent-pipeline", is_fallback=False)
+                    elif engine.can_stream(user_input):
+                        # Real token streaming for plain conversation (no tools involved)
+                        chunks, turn = engine.stream(user_input, current_session.get_messages()[:-1], req_id,
+                                                    user_id=session_ctx.user_id, session_id=session_ctx.session_id)
+                        stream_box = st.empty()
+                        with stream_box.container():
+                            st.write_stream(chunks)
+                        stream_box.empty()
                     else:
                         turn = engine.run(
                             user_input,

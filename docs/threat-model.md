@@ -1,107 +1,49 @@
-# 🛡️ VulNet FinTech AI Agent Security Lab — Threat Model
+# Threat Model
 
-## 1. Overview & Objectives
-This threat model outlines the assets, threat actors, trust boundaries, and attack vectors associated with multi-agent AI systems, utilizing the OWASP Top 10 for Agentic Applications and STRIDE methodology. In Level 2, the system incorporates a simulated FinTech domain, customer authentication, multi-factor verification, and a FastAPI Gateway.
+Scope: the VulNet lab application (chat path + Attack Lab) running locally against synthetic data. This is the model the lab
+*demonstrates*; it is not an assessment of any production system.
 
----
+## Assets
 
-## 2. Key Assets
-1. **Agent Operational Integrity**: The agent's adherence to its designated objective without drift or hijacking.
-2. **Context & Knowledge Store (RAG)**: Integrity and confidentiality of vectorized or retrieved domain knowledge.
-3. **Tool Execution Capability (MCP)**: Boundaries preventing unauthorized invocation or destructive operations.
-4. **Agent State & Session Context**: Isolation between customer sessions, preventing cross-tenant leakage or authorization bypass.
-5. **FinTech Customer & Account Records**: Confidentiality of balances, accounts, and transaction records.
-6. **Authentication & Session Tokens**: Safeguards against credential spraying, session hijacking, or MFA bypass.
+| Asset | Where | Why it matters |
+|---|---|---|
+| Customer balances and ownership boundaries | `FintechService` ledger, MCP suite | Core integrity/confidentiality property: CUST-001 must never act on CUST-002's data |
+| Approval authority | `ApprovalEngine`, `TransactionLifecycleService` | The human-in-the-loop is the last gate for high-risk actions |
+| Identity and role of the caller | auth sessions, `IdentityAuthority` | Every authorisation decision depends on it |
+| Agent goal | `GoalGuard` anchor | An attacker who owns the goal owns the agent |
+| Memory / RAG corpus | `memory/provenance.py`, `rag/` | Persistent influence over future behaviour |
+| Secrets (synthetic canaries) | `security_tests/canaries.py`, `lab/sandbox.py` | Detect exfiltration |
+| Audit trail | `logs/audit.jsonl` | Non-repudiation of decisions |
 
----
+## Actors
 
-## 3. Threat Actors
-- **External Unauthenticated Attacker**: Attempting to invoke API endpoints, spoof sessions, or bypass MFA.
-- **Malicious Customer / Insider**: Authenticated user attempting cross-account unauthorized access or prompt injection.
-- **Untrusted Information Source**: Third-party websites, documents, or data feeds containing indirect prompt injection.
-- **Compromised Sub-Agent**: Internal agent nodes whose output or task messages have been manipulated.
-- **Malicious Extension / Plugin Vendor**: Third-party MCP tool providers attempting supply-chain subversion.
+* **Malicious customer** — controls the chat input, tries injection, cross-account access, role claims, self-approval.
+* **Malicious content author** — controls a document that lands in RAG, a ledger text field, a tool description, an agent plugin.
+* **Compromised agent/component** — a subverted agent, tool or upstream service inside the trust boundary.
+* **Careless human approver** — approves what the agent tells them.
 
----
+## Trust boundaries
 
-## 4. Trust Boundaries & Attack Surfaces
+`user → perimeter`, `retrieved/stored data → prompt`, `LLM → tool gateway`, `agent → agent (bus)`, `tool → backend (MCP)`,
+`third-party component → runtime`, `code/expression → interpreter`. The LLM, RAG, memory, tool output, agent messages and third-party
+components are all on the **untrusted** side of a boundary (see `security-model.md`).
 
-```text
-[ External Client / Web Browser / Streamlit UI ]
-       │ (HTTP Requests, JSON Payloads, User Chat Input)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 1: Input Guardrail ]
-[ Input Guardrail (Perimeter Regex, Role Hijacking, Length Checks) ]
-       │ (Sanitized User Input)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 2: API & Session Gateway ]
-[ FastAPI Gateway / AuthManager (PBKDF2, MFA, Session Isolation) ]
-       │ (Validated SessionContext: Customer ID, Role, Accounts)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 3: RAG Retrieval & Guardrail ]
-[ RAG VectorStore & RAG Guardrail (Indirect Prompt Injection Sanitization) ]
-       │ (Sanitized Context + Immutable Data Tags)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 4: LLM Reasoning (UNTRUSTED) ]
-[ Ollama LLM Client / llama3.2 (Natural Language & Tool Proposal ONLY) ]
-       │ (Proposed Action / Tool Call Parameters)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 5: Tool Guardrail ]
-[ Tool Guardrail (Whitelist Verification, Metacharacter Scan, Domain Invariants) ]
-       │ (Clean Tool Call)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 6: Deterministic Core (OUTSIDE LLM) ]
-[ FinTech Service / RBAC / BOLA Ownership / Risk Engine / Human Approval Gate ]
-       │ (Approved In-Memory Execution)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 7: MCP Server & In-Memory Ledger ]
-[ MCP Server / Synthetic Banking Ledger / Append-Only Audit Logger ]
-       │ (Raw Response Payload)
-═══════▼══════════════════════════════════════════════════════ [ TRUST BOUNDARY 8: Output Guardrail ]
-[ Output Guardrail (PCI PAN Redaction, Token/Secret Redaction, Leakage Checks) ]
-       │ (Sanitized Safe Client Response)
-═══════▼══════════════════════════════════════════════════════
-[ Client UI / Trace Store ]
-```
+## Threats by OWASP Agentic category
 
----
+| ID | Threat in this system | Primary mitigations (deterministic) | Residual risk |
+|---|---|---|---|
+| ASI01 | Direct / indirect / multi-turn / role / tool-output goal hijack | Perimeter, RAG neutralisation, goal anchoring, no self-approval, tool-output sanitising | Pattern detectors are evadable; deeper layers carry the load |
+| ASI02 | Privileged tool, malformed args, tool loops, unauthorised/cross-account transfers | Whitelist, schema/injection guard, limits, rate limit, RBAC, ownership, risk, approval, MCP | Per-tool budgets are static |
+| ASI03 | Cross-customer access, forged identity, role confusion, tampered session | Signed identity, identity provenance, ownership, RBAC | Simulated MFA/session model; no device binding |
+| ASI04 | Poisoned tool metadata, tampered/unpinned/unsigned components, poisoned plugin | Admission control (hash, pin, provenance, signature, metadata scan, permission check) | Trust anchors are lab keys; no real registry |
+| ASI05 | Command injection via analysis tool, exfil, resource exhaustion, path traversal | Restricted AST sandbox, no subprocess/network/imports, budgets, private dir | Sandbox is in-process (not an OS-level jail) |
+| ASI06 | Delayed instruction, poisoned preference, false history, RAG-to-memory persistence | Validation on write, quarantine, provenance, only validated data in prompts, memory never authorises | Validator is pattern-based |
+| ASI07 | Spoofed/forged/modified/replayed messages, unauthorised agent requests, poisoned relayed content | Per-agent HMAC, payload hash, nonce, schema, authorisation matrix, data-only intents | Shared-secret scheme (lab); no PKI |
+| ASI08 | Faulty upstream output cascades to money movement | Schema validation, retry limit, breaker, confidence gate, fail-closed, consistency check, rollback | Rollback covers the simulated ledger only |
+| ASI09 | Persuasive/overconfident agent narrative misleads the approver | Evidence packet from deterministic sources, claim-vs-evidence check, dual control, scope-bound approval | A determined human can still approve; dual control needs two staff |
+| ASI10 | Agent exceeds objective, contacts others, alters results, poisons memory | Capability manifests, anomaly counting, breaker, kill switch, audit | Manifests must be kept accurate |
 
-## 5. LLM Trust Boundary Definition
+## Out of scope
 
-In VulNet AI Agent Security Lab, the Large Language Model (local Ollama `llama3.2` or fallback simulator) is explicitly treated as an **UNTRUSTED reasoning component**:
-
-| Capability | LLM Trusted? | Enforcement Mechanism |
-| :--- | :--- | :--- |
-| **Conversational Fluency & Explanation** | ✅ Trusted | Generates natural language responses based on retrieved context. |
-| **Tool Call Proposal** | ⚠️ Partially Trusted | May suggest tools and parameters, but execution is never automated without inspection. |
-| **Authorization & Access Control** | ❌ **NOT TRUSTED** | Enforced deterministically in Python (`auth/authorization.py`, `fintech/service.py`). |
-| **Account Ownership & BOLA Checks** | ❌ **NOT TRUSTED** | Hardcoded checks verify `customer_id` owns `source_account`. |
-| **Financial Transaction Execution** | ❌ **NOT TRUSTED** | Bounded by risk limits ($10,000 threshold) and Human Approval gate. |
-| **Security Decision Making** | ❌ **NOT TRUSTED** | Guardrails and Security Controller operate external to the prompt space. |
-| **Secret & Sensitive Data Handling** | ❌ **NOT TRUSTED** | Output Guardrail redacts PANs, tokens, and keys before presentation. |
-
----
-
-## 6. STRIDE Threat Mapping
-
-| STRIDE Category | Agentic & FinTech Risk | Vulnerability | Applied Countermeasure |
-| :--- | :--- | :--- | :--- |
-| **Spoofing** | Session token forgery / MFA bypass | ASI03 Identity Abuse | PBKDF2-HMAC-SHA256 password hashes, one-time MFA challenges, and cryptographically random session tokens. |
-| **Tampering** | Injected tool parameters or Cross-Account query tampering | ASI02 Tool Misuse / BOLA | Tool Guardrail parameter sanitization, domain service ownership checks (`validate_customer_owns_account`). |
-| **Repudiation** | Unaudited financial queries or security attacks | ASI02 / ASI03 Tool Abuse | Centralized JSON security telemetry logger, correlated `request_id`, and immutable append-only audit entries. |
-| **Information Disclosure** | Cross-customer balance leakage or prompt extraction | ASI01 Goal Hijack / ASI03 | Output Guardrail regex redaction (`[REDACTED_SENSITIVE_DATA]`), strict account ownership checks, and role segregation. |
-| **Denial of Service** | Cascading failure & Rogue sub-agent spawning | ASI08 / ASI10 | Circuit breakers, graceful degradation, input length/entropy bounds, and sub-agent spawn quotas. |
-| **Elevation of Privilege** | Customer assuming Admin or Fraud Analyst role | ASI03 Identity Abuse | Hierarchical Role-Based Access Control (`customer`, `support`, `fraud_analyst`, `admin`) enforced outside LLM. |
-
----
-
-## 7. Defensive Architecture Principles
-1. **Never Trust Retrieved Context as Instructions**: Wrap external data in strict semantic XML boundaries and sanitize via RAG Guardrail.
-2. **Deterministic Security Controls Strictly Outside the LLM**: Security checks (RBAC, BOLA, Limits, Approvals) must be implemented in deterministic Python code rather than relying on LLM self-moderation.
-3. **Defense-in-Depth Layered Guardrails**: 4 distinct guardrail layers (Input, RAG, Tool, Output) intercept threats at each phase of execution.
-4. **Session & Tenant Isolation by Default**: Every request carries an immutable `SessionContext` verifying customer ownership at the domain service layer.
-5. **Least Privilege by Default**: Downstream tools and accounts require explicit authorization for high-risk operations.
-6. **Fail-Safe Containment**: An isolated tool error or LLM failure must gracefully fall back without causing an application-wide crash.
-
-
-
-## Perimeter controls added in the hardening pass
-- **Mode downgrade** (client requests `vulnerable`): rejected server-side outside the lab flag.
-- **Session guessing / fixation**: unguessable IDs and TTL expiry.
-- **Credential and MFA brute force**: per-account lockout with 429.
-- **Cross-origin abuse**: CORS origin allow-list.
-- **Anonymous probing of the detector**: `/security/evaluate` requires a session.
-Residual risk: see "Known limits" in [hardening.md](hardening.md).
+Real payment rails, real identity providers, network attackers, denial of service against the host, model-weight attacks, supply chain of
+the Python dependencies themselves, multi-tenant isolation beyond the synthetic users.

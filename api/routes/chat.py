@@ -17,7 +17,7 @@ from auth.authentication import get_auth_service
 from auth.models import UnauthorizedError
 from llm.conversation import ConversationEngine, ToolOutcome
 from security import settings
-from fintech.service import FintechService
+from fintech.service import FintechService, get_shared_fintech_service
 from fintech.models import (
     AccountNotFoundError,
     CustomerNotFoundError,
@@ -31,7 +31,6 @@ logger = logging.getLogger("vulnet.api.chat")
 router = APIRouter(tags=["Chat"])
 
 # Service singletons for the API layer
-_fintech_service = FintechService()
 _orchestrators = {
     "secure": AgentOrchestrator(mode="secure"),
     "vulnerable": AgentOrchestrator(mode="vulnerable"),
@@ -43,7 +42,7 @@ def get_session_manager() -> SessionManager:
 
 
 def get_fintech_service() -> FintechService:
-    return _fintech_service
+    return get_shared_fintech_service()
 
 
 def get_orchestrator(mode: str) -> AgentOrchestrator:
@@ -282,6 +281,7 @@ def post_chat(request: ChatRequest) -> ChatResponse:
     # Step 3: Security Controller perimeter check at Step 0
     tracer.start_stage("Security Gateway")
     sec_eval = orchestrator.security.evaluate_request(request.message, session_context=session_ctx)
+    perimeter_flagged = bool(sec_eval.get("blocked") or sec_eval.get("decision") == "BLOCK" or sec_eval.get("is_simulation"))
     is_blocked = (sec_eval.get("blocked", False) or sec_eval.get("decision") == "BLOCK") and mode == "secure"
 
     if is_blocked:
@@ -500,7 +500,8 @@ def post_chat(request: ChatRequest) -> ChatResponse:
                 execution_time_ms=elapsed_ms
             )
 
-        elif settings.llm_enabled() and orchestrator.ollama.check_health().connected:
+        elif (settings.llm_enabled() and orchestrator.ollama.check_health().connected
+              and not (mode == "vulnerable" and perimeter_flagged)):
             # Real local LLM path (same engine as the dashboard): RAG -> Ollama -> guarded tools -> Ollama
             def _account_tool(tool_name: str, args: Dict[str, Any]) -> ToolOutcome:
                 acct = str(args.get("account_id") or "")

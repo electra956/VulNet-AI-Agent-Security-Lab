@@ -34,6 +34,9 @@ class ToolMetadata:
     input_schema: Dict[str, Any] = field(default_factory=dict)
     output_schema: Dict[str, Any] = field(default_factory=dict)
     handler: Optional[Callable[..., Dict[str, Any]]] = None
+    owner: str = "vulnet-core"
+    trust_level: str = "TRUSTED"
+    required_permissions: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert metadata to dictionary representation (omitting raw callable)."""
@@ -44,7 +47,10 @@ class ToolMetadata:
             "allowed_roles": [r.upper() for r in self.allowed_roles],
             "requires_approval": self.requires_approval,
             "input_schema": self.input_schema,
-            "output_schema": self.output_schema
+            "output_schema": self.output_schema,
+            "owner": self.owner,
+            "trust_level": self.trust_level,
+            "required_permissions": self.required_permissions,
         }
 
 

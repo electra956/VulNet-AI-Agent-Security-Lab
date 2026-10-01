@@ -72,7 +72,7 @@ def get_default_users() -> Dict[str, User]:
             password_hash="4bf3088b7f383750f79bc4dc9625381124ea282959a436e32a8fbadffff51feb",
             salt="18ec7a382c3230907827965f7885c0c7",
             role="customer",
-            account_ids=["ACC-2001"],
+            account_ids=["ACC-2001", "ACC-2002"],
             mfa_enabled=True,
             status="ACTIVE"
         ),
@@ -94,6 +94,17 @@ def get_default_users() -> Dict[str, User]:
             password_hash="a70b2f9c2a1d58fab91c37ace7b640d20564fa18bdc1d3e3708dd5e72bbdae13",
             salt="ec3a4965e9dc6ed95ebbddb583a11f63",
             role="support",
+            account_ids=[],
+            mfa_enabled=True,
+            status="ACTIVE"
+        ),
+        "COMPLIANCE-001": User(
+            user_id="COMPLIANCE-001",
+            username="casey_reyes",
+            full_name="Casey Reyes",
+            password_hash="cff4cc8faa1ce6fb1ddd3ea9ca38db9d8bac6f8b3740910458e249215592d0b0",
+            salt="ed998af5adcd97430454989c660ee315",
+            role="compliance_analyst",
             account_ids=[],
             mfa_enabled=True,
             status="ACTIVE"

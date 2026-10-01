@@ -85,12 +85,14 @@ if command -v ollama >/dev/null 2>&1; then
     fi
 
     echo "Checking local models..."
-    if ! ollama list 2>/dev/null | grep -q "llama3.2"; then
-        echo "Pulling llama3.2 model (this may take a couple of minutes)..."
-        ollama pull llama3.2 || echo "Could not pull llama3.2 automatically. You can pull it later via 'ollama run llama3.2'."
-    else
-        echo "Model llama3.2 is already installed."
-    fi
+    for model in llama3.2 nomic-embed-text; do
+        if ! ollama list 2>/dev/null | grep -q "$model"; then
+            echo "Pulling $model (this may take a couple of minutes)..."
+            ollama pull "$model" || echo "Could not pull $model automatically. Run 'ollama pull $model' later."
+        else
+            echo "Model $model is already installed."
+        fi
+    done
 fi
 
 echo ""

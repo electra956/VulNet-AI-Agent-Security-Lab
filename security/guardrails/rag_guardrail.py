@@ -23,6 +23,8 @@ class RAGGuardrail:
     MAX_TOTAL_CONTEXT_CHARS = 10000
 
     SUSPICIOUS_PAYLOADS = [
+        (r"(?i)(?:ignore|disregard) (?:the )?(?:current|existing|prior) (?:security )?(?:policy|rules|instructions)", "INDIRECT_INJECTION_IGNORE_POLICY"),
+        (r"(?i)approve the (?:pending )?(?:transfer|transaction|payment)", "INDIRECT_INJECTION_SELF_APPROVAL"),
         (r"(?i)ignore (?:all )?(?:previous |the user'?s? )?instructions?", "INDIRECT_INJECTION_IGNORE_INSTRUCTIONS"),
         (r"(?i)disregard (?:all |prior |the user'?s? )?(?:instructions?|task|rules|safety|guidelines)", "INDIRECT_INJECTION_DISREGARD"),
         (r"(?i)override (?:your |all |safety )?(?:rules|goal|policy|guidelines)", "INDIRECT_INJECTION_OVERRIDE_RULES"),

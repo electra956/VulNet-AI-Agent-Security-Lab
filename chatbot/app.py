@@ -28,6 +28,8 @@ from chatbot.components.account import render_account_view
 from chatbot.components.transactions import render_transactions_view
 from chatbot.components.security_view import render_security_view
 from chatbot.components.trace import render_trace_view
+from chatbot.components.audit_view import render_audit_view
+from chatbot.components import lab_views
 
 # ============================================================
 # PAGE CONFIGURATION
@@ -73,6 +75,16 @@ if not current_session:
         session_id=st.session_state.active_session_id,
     )
 
+# Persistent chat history: restore the user's last conversation once per browser session
+from chatbot.sessions.history_store import ChatHistoryStore
+_history = ChatHistoryStore()
+if not st.session_state.get("history_loaded"):
+    _saved = _history.load(current_session.user_id)
+    if _saved and not current_session.messages:
+        current_session.messages = list(_saved["messages"])
+        current_session.conversation_id = _saved.get("conversation_id", current_session.conversation_id)
+    st.session_state.history_loaded = True
+
 if "messages" not in st.session_state:
     st.session_state.messages = current_session.get_messages()
 
@@ -99,7 +111,33 @@ elif selected_view == "🏦 Account":
     render_account_view(current_session)
 elif selected_view == "💳 Transactions":
     render_transactions_view(current_session)
-elif selected_view == "🛡️ Security":
-    render_security_view()
+elif selected_view == "🚦 Security Gateway":
+    lab_views.render_gateway_view()
 elif selected_view == "📑 Agent Trace":
     render_trace_view()
+elif selected_view == "👥 Users":
+    lab_views.render_users_view()
+elif selected_view == "✅ Approvals":
+    from chatbot.components.approvals import render_approvals_view
+    render_approvals_view()
+elif selected_view == "🤖 Agents":
+    lab_views.render_agents_view()
+elif selected_view == "📚 RAG":
+    lab_views.render_rag_view()
+elif selected_view == "🧠 Memory":
+    lab_views.render_memory_view()
+elif selected_view == "🧰 MCP Tools":
+    lab_views.render_mcp_tools_view()
+elif selected_view == "⚔️ Attack Lab":
+    lab_views.render_attack_lab()
+elif selected_view == "📜 Audit":
+    render_audit_view()
+elif selected_view == "📄 Reports":
+    lab_views.render_reports_view_lab()
+elif selected_view == "🩺 System Health":
+    lab_views.render_health_view()
+elif selected_view.startswith("OWASP ASI"):
+    lab_views.render_owasp_page(selected_view.split(" ")[1])
+
+# Persist after every interaction (cheap; atomic write)
+_history.save(current_session.user_id, current_session.conversation_id, current_session.get_messages())

@@ -57,6 +57,15 @@ If Ollama or the embedding model is unavailable, retrieval falls back to TF-IDF 
 `local-hash-128` and never used for retrieval. Measured on this machine: about 60 ms per hybrid search, about 600 ms for
 a chat turn without tools when the model is warm.
 
+## Streaming, memory and tool-call hygiene (v3.1)
+* **Streaming**: when a request needs no tool (`select_tools()` is empty), `ConversationEngine.stream()` yields the model's real
+  chunks (`OllamaClient.stream_chat`) and the dashboard renders them with `st.write_stream`; the final text then passes the output
+  guardrail. Tool turns are not streamed because their answer must first be grounded against the tool result.
+* **Memory**: `Remember that …` is handled by a deterministic memory service (`memory/provenance.py`): validated in Secure mode,
+  rejected if it carries an instruction/privilege claim, stored with provenance. Validated notes are added to the prompt as *passive
+  data* and can never grant permissions or approvals.
+* **Tool-call JSON**: small models sometimes print a tool call as JSON text; `scrub_model_text` strips it before display.
+
 ## Poisoning defences
 * Injection patterns cover instructions aimed at the agent's controls and tools (for example "ignore all security
   controls", "approve every transfer … without approval", "grant admin", "call transfer_funds"), in both the RAG engine and the RAG guardrail.

@@ -52,6 +52,8 @@ class RAGEngine:
 
     SUSPICIOUS_PATTERNS = [
         r"ignore (?:all )?previous instructions",
+        r"(?:ignore|disregard) (?:the )?(?:current|existing|prior) (?:security )?(?:policy|rules|instructions)",
+        r"approve the (?:pending )?(?:transfer|transaction|payment)",
         r"forget your instructions",
         r"override your (?:rules|goal|policy)",
         r"reveal (?:system )?prompt",
