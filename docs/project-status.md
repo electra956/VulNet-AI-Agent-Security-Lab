@@ -104,11 +104,14 @@ Two paths sharing the security building blocks (details in [architecture.md](arc
 | RISK | **REAL** | deterministic engine, block/approval tests |
 | APPROVAL | **REAL** | human completion, negative cases, API + UI tests |
 | TELEMETRY | **PARTIAL** | JSONL audit + traces; no OTel |
-| DASHBOARD | **REAL** | 25 AppTest page renders (15 pages + 10 OWASP) + approvals flows; not browser-verified |
+| DASHBOARD | **REAL** | 27 AppTest page renders (17 pages + 10 OWASP) + approvals, login, profile, pay and chat-history flows; not browser-verified |
+| PAYMENTS | **REAL** (synthetic ledger) | Pay page + chat transfers share one guarded lifecycle; secure mode only pays own accounts or trusted payees (`fintech/beneficiaries.py`), tested incl. unknown/5-digit ids |
+| CHAT HISTORY | **REAL** | one file per chat under `data/chat_history/<user>/`; new chat per login, history list in sidebar, tested |
+| SQL INJECTION DEMO | **SIMULATED** | vulnerable mode returns labelled synthetic output, nothing executed; secure mode blocks at the perimeter (`security/sql_simulation.py`) |
 
 ## TEST STATUS
 
-* Full suite (2026-10-01, `python -m pytest -q`): **667 passed, 1 skipped, 0 failed in 4 min (the skip is the ASI05 control experiment in the trace-order test)**.
+* Full suite (2026-10-01, `python -m pytest -q`): **685 passed, 1 skipped, 0 failed in 4 min (the skip is the ASI05 control experiment in the trace-order test)**.
 * Lab: 47 tests → 43 PASS, 4 SIMULATED (ASI05 effect emulated), 0 PARTIAL, 0 FAIL (`python -m lab test`, `reports/`).
 * Runtime checks on the live stack (`./start.sh`): login/MFA, chat with real LLM + RAG + memory, transfers, approval flow, lab API —
   see [testing.md](testing.md).
@@ -127,7 +130,7 @@ python -m pytest -q
 
 `.env` (see `.env.example`): `SECURITY_MODE`, `VULNET_ENV` (`local_lab`/`hardened`), `VULNET_ALLOW_MODE_OVERRIDE`, `VULNET_EXPOSE_MFA_CODE`,
 `VULNET_SESSION_TTL_SECONDS`, `VULNET_CORS_ORIGINS`, `OLLAMA_BASE_URL` / `OLLAMA_MODEL=llama3.2` / `OLLAMA_EMBED_MODEL=nomic-embed-text`,
-`VULNET_USE_LLM`, `VULNET_RAG_EMBEDDINGS`. Models are configurable; nothing is hard-coded to one model.
+`VULNET_USE_LLM`, `VULNET_RAG_EMBEDDINGS`, `OLLAMA_KEEP_ALIVE` (default `30m`), `OLLAMA_MAX_REPLY_TOKENS` (default `400`), `VULNET_BENEFICIARY_FILE`. Models are configurable; nothing is hard-coded to one model.
 
 ## CURRENT GAPS
 

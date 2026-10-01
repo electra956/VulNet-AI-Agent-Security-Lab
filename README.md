@@ -42,9 +42,11 @@ streamlit run chatbot/app.py                           # terminal 2
 
 ```bash
 ollama serve
-ollama pull llama3.2
-ollama pull nomic-embed-text
+ollama pull llama3.2           # chat model, 3B parameters (~2 GB download, ~3 GB RAM when loaded)
+ollama pull nomic-embed-text   # embeddings for RAG (~300 MB)
 ```
+
+Need less memory? Use `llama3.2:1b` (set `OLLAMA_MODEL=llama3.2:1b` in `.env`; ~1.5 GB RAM, simpler answers). The chat model must support **tool calling** (transfers, balance and history use tools), so code-only models such as `stable-code:3b` won't work.
 
 Open http://localhost:8501 and sign in (password + simulated MFA code shown on screen). API docs: http://127.0.0.1:8000/docs.
 
@@ -57,8 +59,11 @@ Demo accounts (full list in [docs/demo-guide.md](docs/demo-guide.md)):
 
 ## ⚔️ Usage
 
-- **Chat** — local `llama3.2`, RAG with citations, guarded tool calls, human approval for high-risk transfers.
-- **Attack Lab** and the ten **OWASP Agentic Top 10** pages (under the sidebar's **Other** dropdown) — pick a scenario, run it in secure or vulnerable mode, and see which control acted.
+- **Chat** — local `llama3.2`, RAG with citations, guarded tool calls, human approval for high-risk transfers. Ask it to check your balance, show transactions or send money. Every login starts a new chat; earlier chats are listed under **Chat History** in the sidebar. The **⚡ Quick Prompts** menu has ready-made banking prompts and one or more attacks for each of ASI01–ASI10.
+- **Pay** — UPI-style screen: balance, send money, recent activity. In Secure Mode money can only go to your own accounts or a **trusted payee** (manage them under *Pay → Trusted payees*; they can't be added from chat). Unknown or untrusted accounts are blocked.
+- **Profile** — your username, email, role and linked accounts (password is masked) and Sign out.
+- **Account** and **Transactions** — balances and the ledger.
+- **Attack Lab** and the ten **OWASP Agentic Top 10** pages (the sidebar shows Chat, Pay, Profile, Account and Transactions; everything else is under its **Other** dropdown) — pick a scenario, run it in secure or vulnerable mode, and see which control acted.
 
 ```bash
 python -m lab list
@@ -70,7 +75,7 @@ python -m lab report                                 # writes reports/
 ## 🧪 Tests
 
 ```bash
-pytest               # full suite: 667 passed, 1 skipped (~4 min)
+pytest               # full suite: 685 passed, 1 skipped (~4 min)
 python -m lab test   # 47 attack scenarios: 43 PASS, 4 SIMULATED (ASI05), 0 FAIL
 ```
 

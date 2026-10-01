@@ -11,7 +11,7 @@ python -m security_tests prompt-injection   # prompt-injection engine (see docs/
 python -m lab test                          # same 47 lab tests, printed as a table
 ```
 
-Last full run: **667 passed, 1 skipped, 0 failed (~4 min; the single skip is the ASI05 legitimate-use control experiment inside the trace-order test)** (see `project-status.md` → TEST STATUS for the dated result). Nothing in the suite needs the network; tests
+Last full run: **685 passed, 1 skipped, 0 failed (~4 min; the single skip is the ASI05 legitimate-use control experiment inside the trace-order test)** (see `project-status.md` → TEST STATUS for the dated result). Nothing in the suite needs the network; tests
 that talk to Ollama (`tests/test_live_llm_rag.py`) use it when reachable and fall back to the labelled offline path otherwise.
 
 ## What is tested, by layer

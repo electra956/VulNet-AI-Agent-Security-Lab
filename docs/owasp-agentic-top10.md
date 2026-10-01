@@ -86,6 +86,10 @@ deterministic layer holds on its own. Security never rests on one layer, and nev
 | `ASI02-UNAUTHORIZED_TXN` | Unauthorized transaction | Both transfers execute: $12,000 leaves the customer and $900 is taken from CUST-002. | Ownership blocks the cross-account debit; the $12,000 transfer is held for human approval. | `OWNERSHIP / HUMAN_APPROVAL` |
 | `ASI02-OUTSIDE_ROLE` | Tool outside the agent's role | A support session moves money and cancels payroll. | RBAC: SUPPORT_AGENT holds neither transaction.create nor transaction.cancel. | `RBAC` |
 
+**Chat SQL-injection demo (SIMULATED):** a payload such as `' OR '1'='1`, `UNION SELECT`, a stacked `; DROP TABLE` or schema probing
+(`sqlite_master`) typed in chat is blocked at the perimeter in Secure Mode. In Vulnerable Mode the lab shows the concatenated query and a
+labelled SQL-style result built from synthetic ledger rows. No SQL is executed and nothing changes (`security/sql_simulation.py`).
+
 ## ASI03 — Identity & Privilege Abuse
 
 **OWASP description.** Agents inherit or are handed credentials, roles and delegated authority; attackers exploit dynamic trust and privilege inheritance, confused-deputy flows, forged identity context and cross-user access to act with more authority than they were granted.

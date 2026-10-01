@@ -20,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from agents.orchestrator import AgentOrchestrator
 from chatbot.sessions.session_manager import SessionManager, CustomerContext, get_shared_session_manager
 from auth.authentication import get_auth_service
-from chatbot.components.login import is_authenticated, render_login_page
+from chatbot.components.login import is_authenticated, loading_overlay_html, render_login_page
 from chatbot.components.sidebar import render_sidebar
 from security import settings
 from chatbot.components.chat import render_chat_view
@@ -67,6 +67,12 @@ auth_service = get_auth_service()
 if not is_authenticated(auth_service):
     render_login_page(auth_service)
     st.stop()
+
+# First render after sign-in is slow (history, LLM health, RAG): show a centered spinner over the stale login
+# page until the dashboard is ready, then remove it (see the end of this script).
+_loader = st.empty()
+if not st.session_state.get("app_ready"):
+    _loader.markdown(loading_overlay_html(), unsafe_allow_html=True)
 
 current_session = st.session_state.session_manager.get_session(st.session_state.active_session_id)
 if not current_session:
@@ -141,3 +147,7 @@ elif selected_view.startswith("OWASP ASI"):
 
 # Persist after every interaction (cheap; atomic write)
 _history.save(current_session.user_id, current_session.conversation_id, current_session.get_messages())
+
+# Dashboard is ready: remove the loading overlay (it is only shown for the first render after sign-in)
+_loader.empty()
+st.session_state.app_ready = True

@@ -23,7 +23,7 @@ This guide provides instructions for installing and running the VulNet FinTech A
    * Windows: run https://ollama.com/download/OllamaSetup.exe (it starts Ollama automatically)
    * Verify: `ollama --version`
 2. **Start the server** (skip if the desktop app / a systemd service already runs it): `ollama serve` → http://127.0.0.1:11434
-3. **Pull the models**: `ollama pull llama3.2` (chat) and `ollama pull nomic-embed-text` (embeddings for RAG); check with `ollama list`
+3. **Pull the models**: `ollama pull llama3.2` (chat, 3B parameters: ~2 GB download, ~3 GB RAM when loaded) and `ollama pull nomic-embed-text` (embeddings for RAG, ~300 MB); check with `ollama list`. Short on RAM? Use `ollama pull llama3.2:1b` and set `OLLAMA_MODEL=llama3.2:1b`. The chat model must support tool calling, so code-only models such as `stable-code:3b` are not suitable (Ollama rejects tool calls with "does not support tools").
 4. **Configure** `.env` (copy `.env.example`): `OLLAMA_BASE_URL=http://127.0.0.1:11434`, `OLLAMA_MODEL=llama3.2`, `OLLAMA_EMBED_MODEL=nomic-embed-text`
 5. **Verify**: `curl http://127.0.0.1:11434/api/tags` lists both models; the dashboard **🩺 System Health** page shows Ollama and the embedding model as up.
 

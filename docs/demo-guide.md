@@ -31,6 +31,12 @@ Sign in as `alex_morgan`, sidebar → **💬 Chat**. The header shows `Ollama: l
 * `What is my balance?` — deterministic verified balance card from the ledger.
 * `Transfer 25 dollars from ACC-1001 to ACC-1002`, then `What is my balance?` — the transfer executes through the guarded tool
   chain and the balance card reflects it (5,420.50 → 5,395.50).
+* `Send $25 to ACC-2001` works (a trusted payee); `Send $25 to ACC-2002` or `ACC-9999` is blocked in Secure Mode. Add a payee under
+  **💸 Pay → 🛡️ Trusted payees** and the same prompt then succeeds.
+* Sign out and back in: the chat is empty and the previous chat appears under **Chat History** in the sidebar (open, delete, or start **➕ New Chat**).
+* **⚡ Quick Prompts** has an attack prompt for every ASI01–ASI10 category. In Vulnerable Mode, the SQL Inject prompt returns a labelled,
+  simulated SQL result (no SQL runs); in Secure Mode it is blocked.
+* The sidebar shows Chat, Pay, Profile, Account and Transactions; all other pages (Attack Lab, OWASP pages, Audit, ...) are under **Other**.
 * System Health page confirms Ollama, the embedding model and the RAG mode.
 
 ## 2. RAG

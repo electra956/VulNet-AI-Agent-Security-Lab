@@ -26,6 +26,21 @@ DEMO_ACCOUNTS = [
 ]
 
 
+def loading_overlay_html(message: str = "Starting VulNet…") -> str:
+    """Full-screen, centered spinner that hides whatever (stale) page is underneath until it is removed."""
+    return f"""
+    <style>
+    @keyframes vulnet-spin {{ to {{ transform: rotate(360deg); }} }}
+    .vulnet-loading {{ position: fixed; inset: 0; z-index: 999999; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 18px; background: #0B0F14; }}
+    .vulnet-loading .ring {{ width: 56px; height: 56px; border-radius: 50%; border: 5px solid rgba(255,255,255,0.12);
+        border-top-color: #00E5FF; animation: vulnet-spin 0.9s linear infinite; }}
+    .vulnet-loading .msg {{ color: #9CA3AF; font-size: 14px; letter-spacing: 0.04em; }}
+    </style>
+    <div class="vulnet-loading"><div class="ring"></div><div class="msg">{message}</div></div>
+    """
+
+
 def is_authenticated(auth_service) -> bool:
     sid = st.session_state.get("active_session_id")
     return bool(sid and auth_service.get_session(sid))
@@ -97,6 +112,8 @@ def render_login_page(auth_service) -> None:
                         st.session_state.pop(key, None)
                     st.session_state.messages = []
                     st.session_state.trace = []
+                    st.session_state.pop("app_ready", None)
+                    st.markdown(loading_overlay_html(), unsafe_allow_html=True)   # cover the login page right away
                     st.rerun()
                 except AuthError as exc:
                     st.session_state.login_error = str(exc)

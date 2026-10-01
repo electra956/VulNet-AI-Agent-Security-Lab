@@ -141,3 +141,13 @@ def test_each_login_starts_a_new_chat_and_old_chats_are_in_history(tmp_path, mon
     sess = at2.session_state.session_manager.get_session(at2.session_state.active_session_id)
     assert sess.messages == [] and sess.conversation_id != first_conv
     assert any(b.key == f"hist_open_{first_conv}" for b in at2.button)       # still in history
+
+
+def test_loading_overlay_is_removed_once_the_dashboard_is_ready():
+    at = _login_alex()
+    assert not at.exception and at.session_state.app_ready is True
+    assert not any("vulnet-loading" in m.value for m in at.markdown)      # overlay gone, dashboard visible
+    assert any("CUST-001" in m.value for m in at.markdown)
+    from chatbot.components.login import loading_overlay_html
+    html = loading_overlay_html()
+    assert "position: fixed" in html and "justify-content: center" in html and "align-items: center" in html

@@ -3,6 +3,7 @@ VulNet FinTech AI Agent Security Lab - Chat Route.
 POST /chat
 """
 
+from security import sql_simulation
 from datetime import datetime
 import logging
 import re
@@ -355,6 +356,18 @@ def post_chat(request: ChatRequest) -> ChatResponse:
     # Step 4: Dispatch execution
     tracer.record_stage("Security Gateway", status=StageStatus.SUCCESS.value, details="Perimeter passed")
     try:
+        if mode == "vulnerable" and sql_simulation.matches(request.message):
+            # ASI02 demo: show what the injected SQL would have returned (simulated; nothing is executed)
+            sql_text = sql_simulation.render(request.message, user_id, req_id)
+            tracer.record_stage("Tool", status=StageStatus.SUCCESS.value, details="Vulnerable mode: SQL injection simulated")
+            session.add_message(role="assistant", content=sql_text, request_id=req_id)
+            audit_logger.log_audit(request_id=req_id, session_id=session_id, user_id=user_id, action="sql_injection_simulation",
+                                   decision="ALLOW", status="completed", risk="HIGH")
+            get_trace_store().add_trace(tracer.finalize(status="completed", decision="ALLOW", risk="HIGH"))
+            return ChatResponse(request_id=req_id, session_id=session.session_id, status="completed", response=sql_text,
+                                scenario="ASI02 - Tool Misuse and Exploitation", decision="ALLOW", user_id=user_id,
+                                execution_time_ms=int((time.perf_counter() - start_time) * 1000))
+
         if is_greeting(request.message):
             tracer.record_stage("Intent Classification", status=StageStatus.SUCCESS.value, details="GREETING")
             tracer.record_stage("Main Agent", status=StageStatus.SUCCESS.value, details="Direct greeting dispatch")

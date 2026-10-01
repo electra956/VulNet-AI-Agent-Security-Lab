@@ -4,6 +4,7 @@ Manages the FinTech conversational UI, quick testing prompts, unique request IDs
 direct integration with the Simulated FinTech Service, and multi-agent pipeline routing.
 """
 
+from security import sql_simulation
 from datetime import datetime
 import re
 from typing import Any, Dict, List, Optional
@@ -579,7 +580,11 @@ def render_chat_view(session_manager: SessionManager, current_session: Session) 
                 with st.spinner("VulNet FinTech AI Agent reasoning..."):
                     pipeline_keywords = ["pipeline", "audit summary", "active defenses", "asi01", "asi02"]
                     vulnerable_attack = mode == "vulnerable" and bool(security_eval.get("is_simulation"))
-                    if vulnerable_attack or any(w in user_input.lower() for w in pipeline_keywords):
+                    if mode == "vulnerable" and sql_simulation.matches(user_input):
+                        # ASI02 demo: show what the injected SQL would have returned (simulated, nothing is executed)
+                        turn = TurnResult(text=sql_simulation.render(user_input, cust.customer_id, req_id),
+                                          model="sql-simulation", is_fallback=False)
+                    elif vulnerable_attack or any(w in user_input.lower() for w in pipeline_keywords):
                         # Lab pipeline: an attack the perimeter let through in Vulnerable mode, or an explicit
                         # multi-agent demo (deterministic agents, not an LLM answer, so the simulation is shown)
                         pipe_res = st.session_state.orchestrator.process(user_input, session_context=session_ctx)
