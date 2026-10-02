@@ -8,7 +8,7 @@ echo " Environment Setup"
 echo "=============================================="
 
 echo ""
-echo "[1/5] Checking Python..."
+echo "[1/6] Checking Python..."
 
 if command -v python3 >/dev/null 2>&1; then
     PY_CMD="python3"
@@ -22,7 +22,7 @@ fi
 $PY_CMD --version
 
 echo ""
-echo "[2/5] Creating virtual environment..."
+echo "[2/6] Creating virtual environment..."
 
 if [ ! -d "venv" ] || [ ! -f "venv/bin/activate" ]; then
     rm -rf venv
@@ -33,19 +33,67 @@ else
 fi
 
 echo ""
-echo "[3/5] Activating virtual environment..."
+echo "[3/6] Activating virtual environment..."
 
 source venv/bin/activate
 
 echo ""
-echo "[4/5] Upgrading pip..."
+echo "[4/6] Upgrading pip..."
 
 python -m pip install --upgrade pip --quiet
 
 echo ""
-echo "[5/5] Installing dependencies..."
+echo "[5/6] Installing dependencies..."
 
 python -m pip install -r requirements.txt
+
+echo ""
+echo "[6/6] Checking Ollama (Local LLM Engine)..."
+
+if ! command -v ollama >/dev/null 2>&1; then
+    echo "Ollama CLI not detected. Attempting automatic installation..."
+
+    # Install zstd if needed for extraction
+    if ! command -v zstd >/dev/null 2>&1; then
+        echo "Installing required extraction tool 'zstd'..."
+        if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -y && sudo apt-get install -y zstd curl || true
+        elif command -v dnf >/dev/null 2>&1; then
+            sudo dnf install -y zstd curl || true
+        elif command -v pacman >/dev/null 2>&1; then
+            sudo pacman -S --noconfirm zstd curl || true
+        fi
+    fi
+
+    # Run Ollama installer
+    if curl -fsSL https://ollama.com/install.sh | sh; then
+        echo "Ollama installed successfully!"
+    else
+        echo "Note: Ollama install was skipped or did not complete."
+        echo "VulNet will run with its built-in local fallback simulation engine."
+    fi
+else
+    echo "Ollama is already installed: $(ollama --version 2>/dev/null || echo 'available')"
+fi
+
+# If Ollama is available, ensure service is running and pull default model
+if command -v ollama >/dev/null 2>&1; then
+    if ! curl -s http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+        echo "Starting Ollama service (OLLAMA_HOST=0.0.0.0:11434)..."
+        OLLAMA_HOST=0.0.0.0:11434 ollama serve >/dev/null 2>&1 &
+        sleep 2
+    fi
+
+    echo "Checking local models..."
+    for model in llama3.2 nomic-embed-text; do
+        if ! ollama list 2>/dev/null | grep -q "$model"; then
+            echo "Pulling $model (this may take a couple of minutes)..."
+            ollama pull "$model" || echo "Could not pull $model automatically. Run 'ollama pull $model' later."
+        else
+            echo "Model $model is already installed."
+        fi
+    done
+fi
 
 echo ""
 echo "=============================================="
@@ -53,7 +101,7 @@ echo " Setup completed successfully!"
 echo "=============================================="
 
 echo ""
-echo "To run the test suite (136 tests across 16 suites):"
+echo "To run the test suite (329 tests across 32 suites):"
 echo "    source venv/bin/activate"
 echo "    pytest"
 echo ""

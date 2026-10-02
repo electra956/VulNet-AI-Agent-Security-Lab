@@ -24,7 +24,7 @@ def get_default_customers() -> Dict[str, Customer]:
             customer_id="CUST-002",
             name="Jordan Lee",
             role="customer",
-            account_ids=["ACC-2001"],
+            account_ids=["ACC-2001", "ACC-2002"],
             status="ACTIVE",
             tier="Retail Standard",
             created_at="2026-02-20T11:30:00Z"
@@ -58,6 +58,14 @@ def get_default_accounts() -> Dict[str, Account]:
             currency="USD",
             status="ACTIVE",
             account_type="Standard Checking"
+        ),
+        "ACC-2002": Account(
+            account_id="ACC-2002",
+            customer_id="CUST-002",
+            balance=9800.00,
+            currency="USD",
+            status="ACTIVE",
+            account_type="Standard Savings"
         ),
     }
 

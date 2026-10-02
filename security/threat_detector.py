@@ -39,6 +39,10 @@ class ThreatDetector:
     GOAL_HIJACK_PATTERNS = [
         "ignore previous instructions",
         "ignore all previous instructions",
+        "ignore the current security policy",
+        "ignore the security policy",
+        "ignore current security policy",
+        "disregard the current security policy",
         "forget your instructions",
         "change your goal",
         "override your rules",
@@ -189,6 +193,18 @@ class ThreatDetector:
                     reason=f"Tool misuse, destructive parameter, or command injection pattern: '{pattern}'."
                 ))
                 break
+        else:
+            # Structural SQL-injection styles that plain substrings miss (tautologies, schema probing, ...)
+            from security.sql_simulation import classify as sql_style
+            style = sql_style(text)
+            if style:
+                findings.append(ThreatFinding(
+                    category="ASI02",
+                    scenario="ASI02 - Tool Misuse and Exploitation",
+                    pattern=f"sql injection ({style})",
+                    severity="HIGH",
+                    reason=f"SQL injection pattern ({style}) detected in user input."
+                ))
 
         # 4. Privilege Escalation Detection (ASI03)
         for pattern in self.PRIVILEGE_ESCALATION_PATTERNS:

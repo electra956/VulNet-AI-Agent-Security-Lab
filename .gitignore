@@ -35,3 +35,11 @@ reports/*.tmp
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Local database & state files
+data/
+!lab/data/
+!lab/data/**
+logs/*.jsonl
+# runtime pid files written by start.sh
+.run/

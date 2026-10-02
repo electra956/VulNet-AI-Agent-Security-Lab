@@ -34,9 +34,9 @@ header[data-testid="stHeader"] {
   z-index: 99 !important;
 }
 
-/* Constrain chat width to allow spacious two-column chat + quick test prompts */
+/* Centred, ChatGPT-style reading column */
 .stMain .block-container {
-  max-width: 1320px !important;
+  max-width: 980px !important;
   padding-top: 4.5rem !important;
   padding-bottom: 8rem !important;
   margin: 0 auto !important;
@@ -256,90 +256,51 @@ div[data-testid="stChatInput"] textarea {
 }
 
 /* ============================================================
-   RIGHT-SIDE FIXED STATIC QUICK TEST PROMPTS PANEL
+   QUICK PROMPTS DROPDOWN (top-right popover)
    ============================================================ */
-div[data-testid="stColumn"]:has(#quick-prompts-anchor) > div[data-testid="stVerticalBlock"],
-div[data-testid="column"]:has(#quick-prompts-anchor) > div[data-testid="stVerticalBlock"],
-div.stColumn:has(#quick-prompts-anchor) > div.stVerticalBlock {
-  position: fixed !important;
-  top: 4.6rem !important;
-  right: max(1rem, calc((100vw - 1320px) / 2 + 1rem)) !important;
-  width: 310px !important;
-  max-height: calc(100vh - 6rem) !important;
-  overflow-y: auto !important;
+div[data-testid="stPopover"] > button,
+div[data-testid="stPopover"] button[kind] {
+  border-radius: 999px !important;
+  border: 1px solid rgba(0, 229, 255, 0.35) !important;
+  background: rgba(0, 229, 255, 0.08) !important;
+  color: var(--accent-cyan) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  transition: all 0.15s ease !important;
+}
+div[data-testid="stPopover"] > button:hover {
+  background: rgba(0, 229, 255, 0.16) !important;
+  border-color: rgba(0, 229, 255, 0.6) !important;
+}
+div[data-testid="stPopoverBody"] {
+  min-width: 360px !important;
   background: #16171a !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 14px !important;
-  padding: 14px 12px !important;
-  z-index: 85 !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55) !important;
 }
-
-.quick-prompts-header-box {
-  margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+div[data-testid="stPopoverBody"] button {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  min-height: 34px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: #ECECF1 !important;
+  white-space: nowrap !important;
 }
-
-.quick-prompts-title-bar {
-  font-size: 13px;
-  font-weight: 700;
-  color: #FFFFFF;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+div[data-testid="stPopoverBody"] button:hover {
+  background: rgba(0, 229, 255, 0.12) !important;
+  border-color: rgba(0, 229, 255, 0.4) !important;
+  color: #00E5FF !important;
 }
-
-.quick-prompts-sub-bar {
-  font-size: 10.5px;
-  color: #9CA3AF;
-  line-height: 1.3;
-  margin-top: 2px;
-}
-
 .quick-cat-label-small {
   font-size: 9.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #818898;
-  margin-top: 8px;
-  margin-bottom: 4px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* Small icon button chips */
-div[data-testid="stColumn"]:has(#quick-prompts-anchor) button,
-div[data-testid="column"]:has(#quick-prompts-anchor) button,
-div.stColumn:has(#quick-prompts-anchor) button {
-  text-align: center !important;
-  justify-content: center !important;
-  padding: 5px 6px !important;
-  font-size: 11px !important;
-  font-weight: 500 !important;
-  line-height: 1.2 !important;
-  border-radius: 7px !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  background: rgba(255, 255, 255, 0.03) !important;
-  color: #ECECF1 !important;
-  transition: all 0.15s ease !important;
-  margin: 0 !important;
-  min-height: 32px !important;
-  height: 32px !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-}
-
-div[data-testid="stColumn"]:has(#quick-prompts-anchor) button:hover,
-div[data-testid="column"]:has(#quick-prompts-anchor) button:hover,
-div.stColumn:has(#quick-prompts-anchor) button:hover {
-  background: rgba(0, 229, 255, 0.12) !important;
-  border-color: rgba(0, 229, 255, 0.4) !important;
-  color: #00E5FF !important;
-  transform: translateY(-1px) !important;
+  margin: 8px 0 2px 0;
 }
 
 /* ============================================================
@@ -461,3 +422,26 @@ div.stColumn:has(#quick-prompts-anchor) button:hover {
 
 
 
+
+
+/* ============================================================
+   STICKY CHAT HEADER (brand, mode pill, toolbar stay pinned while messages scroll)
+   ============================================================ */
+.st-key-chat_sticky_header,
+div[data-testid="stElementContainer"]:has(> .st-key-chat_sticky_header),
+div[data-testid="stLayoutWrapper"]:has(> .st-key-chat_sticky_header) {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 90 !important;
+  background: #070B14 !important;
+}
+.st-key-chat_sticky_header {
+  padding-top: 3.6rem !important;   /* sits under Streamlit's own top bar, hides scrolled content behind it */
+  padding-bottom: 6px !important;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* On the chat page the sticky header supplies the top spacing itself */
+.stMain .block-container:has(.st-key-chat_sticky_header) {
+  padding-top: 0 !important;
+}

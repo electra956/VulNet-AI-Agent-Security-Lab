@@ -77,6 +77,14 @@ class FinTechToolSuite:
                 "currency": "USD",
                 "status": "ACTIVE",
                 "account_type": "Standard Checking"
+            },
+            "ACC-2002": {
+                "account_id": "ACC-2002",
+                "customer_id": "CUST-002",
+                "balance": 9800.00,
+                "currency": "USD",
+                "status": "ACTIVE",
+                "account_type": "Standard Savings"
             }
         }
 
@@ -608,6 +616,68 @@ class FinTechToolSuite:
                 "cancelled_at": datetime.now().isoformat()
             }
         }
+
+    def get_transaction(self, transaction_id: str, customer_id: Optional[str] = None) -> Dict[str, Any]:
+        """Retrieve one transaction record (ownership enforced on either leg)."""
+        txn = next((t for t in self.transactions if t["transaction_id"] == transaction_id), None)
+        if not txn:
+            return {"status": "error", "reason": f"Transaction '{transaction_id}' not found."}
+        if customer_id and customer_id not in ("ADMIN", "FRAUD-001", "SUPPORT-001", "ADMIN-001", "COMPLIANCE-001"):
+            owned = {a for a, v in self.accounts.items() if v["customer_id"] == customer_id}
+            if txn["source_account"] not in owned and txn["destination_account"] not in owned:
+                return {"status": "blocked",
+                        "reason": f"Access Denied: Customer '{customer_id}' is not party to '{transaction_id}'."}
+        return {"status": "success", "tool": "get_transaction", "risk_level": "LOW", "result": dict(txn)}
+
+    def cancel_simulated_transaction(self, transaction_id: str, customer_id: Optional[str] = None,
+                                     reason: str = "cancelled") -> Dict[str, Any]:
+        """Reverse a simulated COMPLETED transaction on the in-memory ledger (rollback)."""
+        txn = next((t for t in self.transactions if t["transaction_id"] == transaction_id), None)
+        if not txn:
+            return {"status": "error", "reason": f"Transaction '{transaction_id}' not found."}
+        if txn["status"] != "COMPLETED":
+            return {"status": "error", "reason": f"Only COMPLETED transactions can be cancelled (is {txn['status']})."}
+        src, dst = txn["source_account"], txn["destination_account"]
+        if customer_id and customer_id not in ("ADMIN", "FRAUD-001", "ADMIN-001"):
+            if src not in self.accounts or self.accounts[src]["customer_id"] != customer_id:
+                return {"status": "blocked", "reason": f"Access Denied: '{customer_id}' does not own source account '{src}'."}
+        if src in self.accounts:
+            self.accounts[src]["balance"] = round(self.accounts[src]["balance"] + txn["amount"], 2)
+        if dst in self.accounts:
+            self.accounts[dst]["balance"] = round(self.accounts[dst]["balance"] - txn["amount"], 2)
+        txn["status"] = "CANCELLED"
+        txn["cancel_reason"] = reason
+        return {"status": "success", "tool": "cancel_simulated_transaction", "risk_level": "MEDIUM",
+                "result": {"transaction_id": transaction_id, "status": "CANCELLED", "real_funds_moved": False}}
+
+    def create_simulated_payment(self, from_account: str, to_account: str, amount: float,
+                                 customer_id: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
+        """Payment = transaction with the full MCP-layer checks (ownership, risk, approval)."""
+        kwargs.setdefault("description", "Simulated Payment")
+        res = self.create_simulated_transaction(from_account, to_account, amount, customer_id=customer_id, **kwargs)
+        if res.get("status") == "success":
+            res["tool"] = "create_simulated_payment"
+        return res
+
+    def get_payment_status(self, payment_id: str, customer_id: Optional[str] = None) -> Dict[str, Any]:
+        """Status of a scheduled payment or a completed payment transaction."""
+        sched = self.scheduled_payments.get(payment_id)
+        if sched:
+            err = self._validate_ownership(customer_id, account_id=sched["from_account"])
+            if err:
+                return err
+            return {"status": "success", "tool": "get_payment_status", "risk_level": "LOW", "result": dict(sched)}
+        res = self.get_transaction(payment_id, customer_id=customer_id)
+        if res.get("status") == "success":
+            res["tool"] = "get_payment_status"
+        return res
+
+    def cancel_simulated_payment(self, payment_id: str, customer_id: Optional[str] = None) -> Dict[str, Any]:
+        """Cancel a scheduled payment (alias of cancel_payment)."""
+        res = self.cancel_payment(payment_id, customer_id=customer_id)
+        if res.get("status") == "success":
+            res["tool"] = "cancel_simulated_payment"
+        return res
 
     # =========================================================================
     # 3. CARD CATEGORY

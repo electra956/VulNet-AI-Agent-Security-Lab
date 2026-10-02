@@ -20,12 +20,16 @@ if str(PROJECT_ROOT) not in sys.path:
 from agents.orchestrator import AgentOrchestrator
 from chatbot.sessions.session_manager import SessionManager, CustomerContext, get_shared_session_manager
 from auth.authentication import get_auth_service
+from chatbot.components.login import is_authenticated, loading_overlay_html, render_login_page
 from chatbot.components.sidebar import render_sidebar
+from security import settings
 from chatbot.components.chat import render_chat_view
 from chatbot.components.account import render_account_view
 from chatbot.components.transactions import render_transactions_view
 from chatbot.components.security_view import render_security_view
 from chatbot.components.trace import render_trace_view
+from chatbot.components.audit_view import render_audit_view
+from chatbot.components import lab_views
 
 # ============================================================
 # PAGE CONFIGURATION
@@ -50,7 +54,7 @@ if "session_manager" not in st.session_state:
     st.session_state.session_manager = get_shared_session_manager()
 
 if "security_mode" not in st.session_state:
-    st.session_state.security_mode = "secure"
+    st.session_state.security_mode = settings.default_security_mode()
 
 if "orchestrator" not in st.session_state:
     st.session_state.orchestrator = AgentOrchestrator(mode=st.session_state.security_mode)
@@ -58,16 +62,28 @@ else:
     if st.session_state.orchestrator.get_mode() != st.session_state.security_mode:
         st.session_state.orchestrator.set_mode(st.session_state.security_mode)
 
-# Active FinTech Session (Authenticated for CUST-001)
+# Authentication gate: nothing else renders until the user has signed in (password + MFA)
 auth_service = get_auth_service()
-if "active_session_id" not in st.session_state or not auth_service.get_session(st.session_state.get("active_session_id", "")):
-    login_info = auth_service.login("alex_morgan", "Cust001Secure!2026")
-    auth_sess = auth_service.verify_mfa(login_info["challenge_id"], login_info["mfa_code"])
-    st.session_state.active_session_id = auth_sess.session_id
+if not is_authenticated(auth_service):
+    render_login_page(auth_service)
+    st.stop()
+
+# First render after sign-in is slow (history, LLM health, RAG): show a centered spinner over the stale login
+# page until the dashboard is ready, then remove it (see the end of this script).
+_loader = st.empty()
+if not st.session_state.get("app_ready"):
+    _loader.markdown(loading_overlay_html(), unsafe_allow_html=True)
 
 current_session = st.session_state.session_manager.get_session(st.session_state.active_session_id)
 if not current_session:
-    current_session = st.session_state.session_manager.create_session(user_id="CUST-001", session_id=st.session_state.active_session_id)
+    current_session = st.session_state.session_manager.create_session(
+        user_id=auth_service.get_session(st.session_state.active_session_id).user_id,
+        session_id=st.session_state.active_session_id,
+    )
+
+# Persistent chat history: every login starts a NEW chat; earlier chats are listed in the sidebar History.
+from chatbot.sessions.history_store import ChatHistoryStore
+_history = ChatHistoryStore()
 
 if "messages" not in st.session_state:
     st.session_state.messages = current_session.get_messages()
@@ -91,11 +107,47 @@ selected_view = render_sidebar(st.session_state.session_manager, current_session
 # ============================================================
 if selected_view == "💬 Chat":
     render_chat_view(st.session_state.session_manager, current_session)
+elif selected_view == "💸 Pay":
+    from chatbot.components.pay import render_pay_view
+    render_pay_view(current_session)
+elif selected_view == "👤 Profile":
+    from chatbot.components.profile import render_profile_view
+    render_profile_view(current_session)
 elif selected_view == "🏦 Account":
     render_account_view(current_session)
 elif selected_view == "💳 Transactions":
     render_transactions_view(current_session)
-elif selected_view == "🛡️ Security":
-    render_security_view()
+elif selected_view == "🚦 Security Gateway":
+    lab_views.render_gateway_view()
 elif selected_view == "📑 Agent Trace":
     render_trace_view()
+elif selected_view == "👥 Users":
+    lab_views.render_users_view()
+elif selected_view == "✅ Approvals":
+    from chatbot.components.approvals import render_approvals_view
+    render_approvals_view()
+elif selected_view == "🤖 Agents":
+    lab_views.render_agents_view()
+elif selected_view == "📚 RAG":
+    lab_views.render_rag_view()
+elif selected_view == "🧠 Memory":
+    lab_views.render_memory_view()
+elif selected_view == "🧰 MCP Tools":
+    lab_views.render_mcp_tools_view()
+elif selected_view == "⚔️ Attack Lab":
+    lab_views.render_attack_lab()
+elif selected_view == "📜 Audit":
+    render_audit_view()
+elif selected_view == "📄 Reports":
+    lab_views.render_reports_view_lab()
+elif selected_view == "🩺 System Health":
+    lab_views.render_health_view()
+elif selected_view.startswith("OWASP ASI"):
+    lab_views.render_owasp_page(selected_view.split(" ")[1])
+
+# Persist after every interaction (cheap; atomic write)
+_history.save(current_session.user_id, current_session.conversation_id, current_session.get_messages())
+
+# Dashboard is ready: remove the loading overlay (it is only shown for the first render after sign-in)
+_loader.empty()
+st.session_state.app_ready = True

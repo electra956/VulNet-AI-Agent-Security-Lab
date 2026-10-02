@@ -55,6 +55,11 @@ class ChatResponse(BaseModel):
     decision: Optional[str] = Field(None, description="Security perimeter decision (ALLOW or BLOCK)")
     user_id: Optional[str] = Field(None, description="Associated customer identity")
     execution_time_ms: Optional[int] = Field(None, description="Execution latency in milliseconds")
+    llm_model: Optional[str] = Field(None, description="Model that produced the reply (Ollama model, offline-simulation, or deterministic pipeline)")
+    llm_offline_simulation: Optional[bool] = Field(None, description="True when Ollama was unreachable and the rule-based simulator answered")
+    retrieval_mode: Optional[str] = Field(None, description="RAG retrieval mode, e.g. hybrid:nomic-embed-text or tfidf-lexical")
+    retrieved_sources: Optional[List[str]] = Field(None, description="Documents retrieved and supplied to the model")
+    tools_called: Optional[List[str]] = Field(None, description="Tools the model requested during this turn")
 
 
 class AccountResponse(BaseModel):

@@ -35,7 +35,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from api.routes import health, chat, account, security, auth
+from security import settings
+from api.routes import health, chat, account, security, auth, lab, approvals
 from chatbot.sessions.session_manager import SessionManager
 
 # Configure sanitized logging
@@ -54,13 +55,13 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS Middleware (Local Lab Simulation)
+# CORS: explicit origin allow-list (VULNET_CORS_ORIGINS), no wildcard with credentials
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Request-ID", "Authorization"],
 )
 
 
@@ -75,6 +76,10 @@ async def request_id_middleware(request: Request, call_next):
 
     response = await call_next(request)
     response.headers["X-Request-ID"] = req_id
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Cache-Control", "no-store")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
     return response
 
 
@@ -146,6 +151,8 @@ app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(account.router)
 app.include_router(security.router)
+app.include_router(lab.router)
+app.include_router(approvals.router)
 
 
 @app.get("/", tags=["Root"])

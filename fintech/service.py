@@ -240,3 +240,26 @@ class FintechService:
         txn.transition_to(new_status, reason=reason)
         return self.repository.save_transaction(txn)
 
+
+# ---------------------------------------------------------------------------
+# One authoritative synthetic ledger per process
+# ---------------------------------------------------------------------------
+# Chat, the API routes, the dashboard views and the transaction lifecycle must all read and write the SAME
+# repository; separate FintechService() instances silently diverge (a completed transfer would not show in the
+# balance card). Tests that need isolation construct FintechService() directly.
+
+_shared_service: Optional[FintechService] = None
+
+
+def get_shared_fintech_service() -> FintechService:
+    global _shared_service
+    if _shared_service is None:
+        _shared_service = FintechService()
+    return _shared_service
+
+
+def reset_shared_fintech_service() -> FintechService:
+    """Restore the seeded synthetic ledger IN PLACE (holders of the shared service keep pointing at it)."""
+    svc = get_shared_fintech_service()
+    svc.repository.reset()
+    return svc

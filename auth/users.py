@@ -57,6 +57,7 @@ def get_default_users() -> Dict[str, User]:
         "CUST-001": User(
             user_id="CUST-001",
             username="alex_morgan",
+            email="alex.morgan@vulnet.example",
             full_name="Alex Morgan",
             password_hash="08a321df54442392288f2fd8549a29e243fc53f9af9e202fffa160999395bc27",
             salt="646a09bc22b88a21a04f7f6e000e2802",
@@ -68,17 +69,19 @@ def get_default_users() -> Dict[str, User]:
         "CUST-002": User(
             user_id="CUST-002",
             username="jordan_lee",
+            email="jordan.lee@vulnet.example",
             full_name="Jordan Lee",
             password_hash="4bf3088b7f383750f79bc4dc9625381124ea282959a436e32a8fbadffff51feb",
             salt="18ec7a382c3230907827965f7885c0c7",
             role="customer",
-            account_ids=["ACC-2001"],
+            account_ids=["ACC-2001", "ACC-2002"],
             mfa_enabled=True,
             status="ACTIVE"
         ),
         "FRAUD-001": User(
             user_id="FRAUD-001",
             username="riley_taylor",
+            email="riley.taylor@vulnet.example",
             full_name="Riley Taylor",
             password_hash="c4ab36b2687d5dc2febfc29c070d03a1f514da5544219fb079cec116d503939c",
             salt="1d4ca7c1bf80d02104f59f900c9d6110",
@@ -90,6 +93,7 @@ def get_default_users() -> Dict[str, User]:
         "SUPPORT-001": User(
             user_id="SUPPORT-001",
             username="sam_casey",
+            email="sam.casey@vulnet.example",
             full_name="Sam Casey",
             password_hash="a70b2f9c2a1d58fab91c37ace7b640d20564fa18bdc1d3e3708dd5e72bbdae13",
             salt="ec3a4965e9dc6ed95ebbddb583a11f63",
@@ -98,9 +102,22 @@ def get_default_users() -> Dict[str, User]:
             mfa_enabled=True,
             status="ACTIVE"
         ),
+        "COMPLIANCE-001": User(
+            user_id="COMPLIANCE-001",
+            username="casey_reyes",
+            email="casey.reyes@vulnet.example",
+            full_name="Casey Reyes",
+            password_hash="cff4cc8faa1ce6fb1ddd3ea9ca38db9d8bac6f8b3740910458e249215592d0b0",
+            salt="ed998af5adcd97430454989c660ee315",
+            role="compliance_analyst",
+            account_ids=[],
+            mfa_enabled=True,
+            status="ACTIVE"
+        ),
         "ADMIN-001": User(
             user_id="ADMIN-001",
             username="morgan_vance",
+            email="morgan.vance@vulnet.example",
             full_name="Morgan Vance",
             password_hash="a33c20ffb006f308ab82e8d3d7d6fdb9403d4ca67b64a3a598fe444c8059215d",
             salt="593904c80ffb833224278105daf2b184",

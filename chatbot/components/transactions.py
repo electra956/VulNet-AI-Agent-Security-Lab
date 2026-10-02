@@ -6,14 +6,12 @@ Strictly local and synthetic data.
 """
 
 import streamlit as st
-from fintech.service import FintechService
+from fintech.service import FintechService, get_shared_fintech_service
 
 
 def get_fintech_service() -> FintechService:
     """Retrieve or create the FintechService singleton in session state."""
-    if "fintech_service" not in st.session_state:
-        st.session_state.fintech_service = FintechService()
-    return st.session_state.fintech_service
+    return get_shared_fintech_service()
 
 
 def render_transactions_view(current_session) -> None:

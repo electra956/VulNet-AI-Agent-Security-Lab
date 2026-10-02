@@ -13,6 +13,35 @@ This guide provides instructions for installing and running the VulNet FinTech A
 
 ---
 
+## 1b. Local LLM (Ollama) — required for real LLM answers and semantic RAG
+
+`setup.sh`, `setup.ps1` and `setup_windows.ps1` attempt steps 1–3 for you and `./start.sh` starts the server; do them by hand if that fails.
+
+1. **Install Ollama**
+   * Linux / WSL (needs `curl` and `zstd`): `sudo apt-get install -y curl zstd && curl -fsSL https://ollama.com/install.sh | sh`
+   * macOS: installer from https://ollama.com/download or `brew install ollama`
+   * Windows: run https://ollama.com/download/OllamaSetup.exe (it starts Ollama automatically)
+   * Verify: `ollama --version`
+2. **Start the server** (skip if the desktop app / a systemd service already runs it): `ollama serve` → http://127.0.0.1:11434
+3. **Pull the models**: `ollama pull llama3.2` (chat, 3B parameters: ~2 GB download, ~3 GB RAM when loaded) and `ollama pull nomic-embed-text` (embeddings for RAG, ~300 MB); check with `ollama list`. Short on RAM? Use `ollama pull llama3.2:1b` and set `OLLAMA_MODEL=llama3.2:1b`. The chat model must support tool calling, so code-only models such as `stable-code:3b` are not suitable (Ollama rejects tool calls with "does not support tools").
+4. **Configure** `.env` (copy `.env.example`): `OLLAMA_BASE_URL=http://127.0.0.1:11434`, `OLLAMA_MODEL=llama3.2`, `OLLAMA_EMBED_MODEL=nomic-embed-text`
+5. **Verify**: `curl http://127.0.0.1:11434/api/tags` lists both models; the dashboard **🩺 System Health** page shows Ollama and the embedding model as up.
+
+Without Ollama the app still runs: replies are labelled *Offline simulation*, retrieval falls back to TF-IDF, and the Attack Lab uses its
+deterministic agent policy. See [llm-and-rag.md](llm-and-rag.md).
+
+---
+
+## 1c. One-command start (Linux / WSL / macOS)
+```bash
+./start.sh            # sets up if needed, starts Ollama (if installed), API :8000 and dashboard :8501
+./start.sh status | stop | test | report
+./start.sh --no-ollama
+```
+Then open http://localhost:8501 (demo users: [demo-guide.md](demo-guide.md)).
+
+---
+
 ## 2. Automated Setup
 
 ### Linux / WSL / macOS
@@ -25,6 +54,8 @@ chmod +x setup.sh
 
 source venv/bin/activate
 ```
+
+> If `activate` doesn't put the venv first on PATH (seen on WSL with `/mnt/*` checkouts), call `venv/bin/python -m pytest`, `venv/bin/python -m lab test`, etc. directly.
 
 To run the backend and frontend:
 ```bash
@@ -83,7 +114,7 @@ cp .env.example .env
 ```
 
 ### Step 4: Verify Installation with Test Suite
-Run the full test suite (136 tests across 16 test suites):
+Run the full test suite (366 tests across 38 test suites):
 ```bash
 pytest
 ```

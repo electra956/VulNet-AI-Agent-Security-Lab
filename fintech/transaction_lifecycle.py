@@ -40,6 +40,7 @@ CRITICAL SECURITY INVARIANTS:
 - AI Agent can NEVER approve its own transactions or override risk controls.
 """
 
+from fintech.beneficiaries import get_beneficiary_registry
 from datetime import datetime, timezone
 import logging
 import re
@@ -86,7 +87,8 @@ class TransactionLifecycleService:
         elif fintech_repo is not None:
             self.fintech_service = FintechService(repository=fintech_repo)
         else:
-            self.fintech_service = FintechService()
+            from fintech.service import get_shared_fintech_service
+            self.fintech_service = get_shared_fintech_service()
         self.risk_engine = risk_engine or TransactionRiskEngine()
         if approval_engine is not None:
             self.approval_engine = approval_engine
@@ -143,7 +145,7 @@ class TransactionLifecycleService:
                 amount = 0.0
 
         # Parse accounts
-        acct_matches = re.findall(r"\b(ACC-\d{4})\b", text, re.IGNORECASE)
+        acct_matches = re.findall(r"\b(ACC-\d{4,})\b", text, re.IGNORECASE)
         from_account = None
         to_account = None
 
@@ -402,6 +404,32 @@ class TransactionLifecycleService:
             tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="Identical source and destination")
             return self._build_transaction_response(init_txn, tracer, error_msg="Transfer destination cannot be the same as the source account.")
 
+        # STEP 12b: TRUSTED-BENEFICIARY CHECK (secure mode). Money may only go to the customer's own accounts or to a
+        # payee the customer added on the Pay page. Deterministic, outside the LLM, and not editable from chat.
+        if mode == "secure":
+            own = set(user_accounts)
+            dest_exists = self.fintech_service.repository.get_account(to_acct) is not None
+            if to_acct not in own and (
+                not dest_exists or not get_beneficiary_registry().is_trusted(user_id, to_acct)
+            ):
+                why = (f"Destination account '{to_acct}' does not exist." if not dest_exists
+                       else f"Destination account '{to_acct}' is not one of your trusted payees.")
+                init_txn.transition_to(TransactionStatus.REJECTED, reason=why)
+                self.fintech_service.repository.save_transaction(init_txn)
+                tracer.record_stage("Beneficiary Check", status=StageStatus.BLOCKED.value, details=why)
+                tracer.record_stage("Tool", status=StageStatus.BLOCKED.value, details="Untrusted beneficiary")
+                self._log_audit_event(
+                    req_id=req_id, sess_id=sess_id, user_id=user_id,
+                    action="create_simulated_transaction", decision="REJECT",
+                    status="rejected", risk="HIGH", account_id=from_acct,
+                    reason=f"Beneficiary check failed: {why}"
+                )
+                return self._build_transaction_response(
+                    init_txn, tracer,
+                    error_msg=f"Transfer blocked: {why}" + ("" if not dest_exists else " Add the account under **Pay → Trusted payees** first, then try again.")
+                )
+            tracer.record_stage("Beneficiary Check", status=StageStatus.SUCCESS.value, details=f"{to_acct} is a trusted destination")
+
         if amount <= 0:
             init_txn.transition_to(TransactionStatus.REJECTED, reason=f"Amount must be positive, got {amount}.")
             self.fintech_service.repository.save_transaction(init_txn)
@@ -610,6 +638,102 @@ class TransactionLifecycleService:
             error=reason if decision in ("BLOCK", "REJECT") else None,
             metadata=meta
         )
+
+    # ------------------------------------------------------------------
+    # Human decision on a queued high-risk transaction
+    # ------------------------------------------------------------------
+    def _pending_for(self, approval_id: str):
+        rec = self.approval_engine.get_request(approval_id)
+        if rec is None:
+            return None, None, "Approval request not found."
+        txn = self.fintech_service.repository.get_transaction(rec.parameters.get("transaction_id", ""))
+        if txn is None:
+            return rec, None, "The queued transaction no longer exists."
+        return rec, txn, None
+
+    def complete_approved(self, approval_id: str, approver_id: str, approver_role: str) -> Dict[str, Any]:
+        """
+        A HUMAN approves a queued transaction and it is executed.
+
+        The approval engine still refuses AI callers, expired requests and unauthorised roles. The transaction that runs is
+        re-checked against the parameters that were approved (scope binding), the source balance is re-validated, and the
+        transfer goes through the same MCP gateway as any other transfer. Returns a structured result (never raises).
+        """
+        rec, txn, err = self._pending_for(approval_id)
+        if err:
+            return {"status": "error", "reason": err}
+        if txn.status != TransactionStatus.APPROVAL_REQUIRED.value:
+            return {"status": "error", "reason": f"Transaction is {txn.status}, not awaiting approval."}
+        # Human approval can never override a deterministic risk BLOCK: re-evaluate before honouring it.
+        rr = self.risk_engine.evaluate({
+            "amount": float(txn.amount), "from_account": txn.source_account_id, "to_account": txn.destination_account_id,
+            "available_balance": (self.fintech_service.repository.get_account(txn.source_account_id).balance
+                                  if self.fintech_service.repository.get_account(txn.source_account_id) else 0.0)})
+        if rr.decision == RiskDecision.BLOCK:
+            why = "; ".join(rr.reasons) or "risk policy"
+            res = self.reject_pending(approval_id, approver_id, approver_role,
+                                      reason=f"Risk policy BLOCK cannot be overridden by approval: {why}")
+            return {"status": "blocked", "reason": f"Risk policy forbids this transfer even with approval: {why}", "rejection": res}
+        approved = self.approval_engine.approve(approval_id, approver_id=approver_id, approver_role=approver_role)
+        if approved.get("status") != "success":
+            return {"status": "blocked", "reason": approved.get("reason", "Approval refused.")}
+
+        p = rec.parameters
+        if (txn.source_account_id, txn.destination_account_id, float(txn.amount)) != (p["from_account"], p["to_account"], float(p["amount"])):
+            txn.transition_to(TransactionStatus.REJECTED, reason="Approved parameters no longer match the queued transaction.")
+            self.fintech_service.repository.save_transaction(txn)
+            return {"status": "blocked", "reason": "Scope mismatch: the queued transaction differs from what was approved."}
+
+        src = self.fintech_service.repository.get_account(txn.source_account_id)
+        if src is None or src.balance < txn.amount:
+            txn.transition_to(TransactionStatus.FAILED, reason="Insufficient funds at execution time.")
+            self.fintech_service.repository.save_transaction(txn)
+            return {"status": "error", "reason": "Insufficient funds at execution time."}
+
+        txn.transition_to(TransactionStatus.APPROVED, reason=f"Approved by human {approver_id} ({approver_role}).")
+        txn.transition_to(TransactionStatus.PROCESSING, reason="Dispatching approved transfer to MCP.")
+        tool_meta = self.mcp_server.registry.get("create_simulated_transaction")
+        if tool_meta and hasattr(tool_meta.handler, "__self__") and txn.source_account_id in getattr(tool_meta.handler.__self__, "accounts", {}):
+            tool_meta.handler.__self__.accounts[txn.source_account_id]["balance"] = src.balance
+        from auth.users import UserRepository
+        owner = UserRepository().get_user_by_id(rec.user_id)
+        mcp_res = self.mcp_server.execute_tool(
+            "create_simulated_transaction", caller_role=(owner.role if owner else "customer"), user_authorized=True,
+            customer_id=rec.user_id, from_account=txn.source_account_id, to_account=txn.destination_account_id,
+            amount=float(txn.amount), currency=txn.currency, description=txn.description,
+            request_id=rec.request_id, session_id=txn.session_id)
+        if mcp_res.get("status") != "success":
+            txn.transition_to(TransactionStatus.FAILED, reason=f"MCP execution failed after approval: {mcp_res.get('reason')}")
+            self.fintech_service.repository.save_transaction(txn)
+            return {"status": "error", "reason": mcp_res.get("reason", "MCP execution failed.")}
+        self.fintech_service.repository.update_account_balance(txn.source_account_id, src.balance - txn.amount)
+        dest = self.fintech_service.repository.get_account(txn.destination_account_id)
+        if dest:
+            self.fintech_service.repository.update_account_balance(txn.destination_account_id, dest.balance + txn.amount)
+        txn.transition_to(TransactionStatus.COMPLETED, reason=f"Completed after human approval by {approver_id}.")
+        txn.approval_status = "APPROVED"
+        self.fintech_service.repository.save_transaction(txn)
+        self._log_audit_event(req_id=rec.request_id, sess_id=txn.session_id or "", user_id=rec.user_id,
+                              action="approved_transaction_completed", decision="ALLOW", status="completed", risk=rec.risk,
+                              account_id=txn.source_account_id, reason=f"Approved by {approver_id} ({approver_role}); {approval_id}")
+        return {"status": "completed", "transaction_id": txn.transaction_id, "approval_id": approval_id, "approver": approver_id}
+
+    def reject_pending(self, approval_id: str, approver_id: str, approver_role: str, reason: str = "Rejected by human reviewer") -> Dict[str, Any]:
+        rec, txn, err = self._pending_for(approval_id)
+        if err:
+            return {"status": "error", "reason": err}
+        res = self.approval_engine.reject(approval_id, approver_id=approver_id, approver_role=approver_role, reason=reason)
+        if res.get("status") == "blocked" or res.get("status") == "error":
+            return {"status": "blocked", "reason": res.get("reason", "Rejection refused.")}
+        if txn.status == TransactionStatus.APPROVAL_REQUIRED.value:
+            txn.transition_to(TransactionStatus.REJECTED, reason=f"Rejected by human {approver_id}: {reason}")
+            txn.approval_status = "REJECTED"
+            self.fintech_service.repository.save_transaction(txn)
+        self._log_audit_event(req_id=rec.request_id, sess_id=txn.session_id or "", user_id=rec.user_id,
+                              action="approved_transaction_rejected", decision="BLOCK", status="rejected", risk=rec.risk,
+                              account_id=txn.source_account_id, reason=f"Rejected by {approver_id}: {reason}")
+        return {"status": "rejected", "transaction_id": txn.transaction_id, "approval_id": approval_id}
+
 
     def _build_transaction_response(
         self,

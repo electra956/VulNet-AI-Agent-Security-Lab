@@ -1,109 +1,55 @@
-# 🧪 VulNet FinTech AI Agent Security Lab — Testing Guide
+# Testing Guide
 
-The VulNet test suite provides comprehensive, deterministic unit and integration coverage across the entire Agentic AI pipeline, FastAPI API Gateway, Customer Authentication, Simulated FinTech Domain, and all 10 OWASP security scenarios.
-
----
-
-## 1. Running the Automated Test Suite
-
-### Run All Tests via Pytest
-```bash
-# In Linux / WSL
-source venv/bin/activate
-pytest
-
-# In Windows PowerShell
-.\venv\Scripts\Activate.ps1
-pytest
-```
-
-The test runner will execute all **249 automated test cases** across **26 test suites**:
-1. **Action Agent** (`tests/test_action_agent.py`) — Action execution, approval boundaries, and high-risk action authorization.
-2. **FastAPI API Gateway** (`tests/test_api.py`) — Health, Auth enforcement, Chat endpoints, Account lookups, OWASP Security evaluations, and request correlation.
-3. **Customer Authentication & MFA** (`tests/test_auth.py`) — PBKDF2 hashing, MFA challenge-response, session tokens, logout, unauthenticated chat rejections.
-4. **FinTech RBAC & Authorization** (`tests/test_authorization.py`) — Role normalization, 9 granular permissions, allowed/denied actions, cross-customer account BOLA rejection, and ASI03 regression tests.
-5. **ASI01 FinTech Goal Hijack** (`tests/test_asi01_goal_hijack.py`) — Direct prompt injection, override command neutralization, trace flow validation, and safe simulated execution.
-6. **FinTech Chatbot** (`tests/test_fintech_chatbot.py`) — Chat view routing, state persistence, greeting extraction, balance/transaction queries, ASI01 mode toggle.
-6. **Simulated FinTech Domain** (`tests/test_fintech_domain.py`) — Customer & account repositories, ownership invariants, balance retrieval, transaction history.
-7. **Simulated FinTech Tool Ecosystem** (`tests/test_fintech_tools.py`) — 16 tools across ACCOUNT, PAYMENT, CARD, FRAUD, KYC, and SUPPORT categories; object-level ownership (BOLA prevention), high-risk human approval enforcement, and audit telemetry.
-8. **Transaction Risk Engine** (`tests/test_transaction_risk.py`) — Deterministic local risk rules across LOW, MEDIUM, HIGH, and CRITICAL tiers; policy decisions (ALLOW, VALIDATE, REVIEW, BLOCK), granular audit trace telemetry, and agent override rejection.
-9. **Human-in-the-Loop Approval Engine** (`tests/test_approval_engine.py`) — High-risk simulated action approval workflows, expiration/TTL checks, human role enforcement, double-decision immutability, and strict anti-self-approval defenses blocking AI actors.
-10. **Observability, Audit & Trace** (`tests/test_observability.py`) — Complete 11-stage pipeline checklist verification, mandatory telemetry fields, strict credential/secret scrubbing, structured JSON logging, and append-only audit persistence.
-11. **Main Agent** (`tests/test_main_agent.py`) — Context handling, goal extraction, and goal-drift detection.
-12. **MCP Server & Safe Tools** (`tests/test_mcp.py`) — Tool listing, role-based access control (RBAC), argument sanitization, audit logging.
-13. **Secure MCP Tool Gateway** (`tests/test_mcp_gateway.py`) — Registered tools, unknown tool rejection, unauthorized tool blocks, argument validation (type check & ASI02 injection detection), high-risk human approval gates, output validation, tool audit telemetry, and arbitrary Python execution prevention.
-14. **Agent Orchestrator** (`tests/test_orchestrator.py`) — Multi-agent pipeline flow from user prompt through research and action.
-15. **FinTech Agent Orchestrator & Specialized Agents** (`tests/test_agent_orchestrator.py`) — Intent classification, task planning, agent routing, structured outputs, financial safety invariants, and invalid request handling.
-16. **FinTech Agent Memory Subsystem** (`tests/test_memory.py`) — Short-term conversation memory, user preferences, session context memory, authorization claim prevention, sensitive data sanitization, and ASI06 memory poisoning defense.
-17. **OWASP Top 10 Scenarios** (`tests/test_owasp_scenarios.py`) — Automated side-by-side verification of ASI01 through ASI10 in Secure vs. Vulnerable modes.
-18. **Quick Prompts Suite** (`tests/test_quick_prompts.py`) — Pre-configured adversarial and benign prompts validation.
-19. **RAG Engine Manual** (`tests/test_rag_manual.py`) — TF-IDF vector retrieval, cosine similarity thresholds, and indirect prompt injection filtering.
-20. **FinTech Knowledge Base & Hardened RAG** (`tests/test_fintech_rag.py`) — Semantic chunking, document metadata (`source`, `document_type`, `trust_level`, `created_at`), trusted vs untrusted content boundaries, indirect prompt injection neutralization, and dynamic synthetic RAG poisoning simulation.
-21. **Research Agent** (`tests/test_research_agent.py`) — Context synthesis and command neutralization under Secure Mode.
-22. **Security Controller** (`tests/test_security_controller.py`) — Signature heuristics, security event telemetry, and mode evaluation.
-23. **Security Gateway** (`tests/test_security_gateway.py`) — Input validation, threat detection, policy enforcement, risk scoring, and structured decision contracts (`ALLOW`/`BLOCK`/`APPROVAL`).
-24. **Security Pipeline Integration** (`tests/test_security_pipeline.py`) — End-to-end integration between Security Controller and agent pipeline.
-25. **Session Context** (`tests/test_session_context.py`) — Request ID tracking, session ID isolation, multi-tenant session segregation, context preservation.
-
----
-
-## 2. Targeted Test Execution
-
-### Run Only API and Authentication Tests
-```bash
-pytest tests/test_api.py tests/test_auth.py -v
-```
-
-### Run Only FinTech Domain Tests
-```bash
-pytest tests/test_fintech_domain.py tests/test_session_context.py -v
-```
-
-### Run Only OWASP Scenarios
-```bash
-pytest tests/test_owasp_scenarios.py -v
-```
-
-### Run a Specific Scenario Test
-```bash
-# Test ASI01 Agent Goal Hijack in both modes
-pytest tests/test_owasp_scenarios.py -k "ASI01" -v
-
-# Test ASI02 Tool Misuse in both modes
-pytest tests/test_owasp_scenarios.py -k "ASI02" -v
-```
-
-### Run Subsystem Tests Directly
-Every test file can also be run directly with Python:
-```bash
-python tests/test_api.py
-python tests/test_auth.py
-python tests/test_fintech_domain.py
-python tests/test_security_pipeline.py
-python tests/test_mcp.py
-```
-
----
-
-## 3. Python Syntax Verification
-To verify syntax across the entire repository without execution:
-```bash
-python -m py_compile agents/*.py api/*.py api/routes/*.py auth/*.py chatbot/*.py chatbot/components/*.py chatbot/sessions/*.py fintech/*.py mcp_server/*.py rag/*.py security/*.py vulnerabilities/**/*.py tests/*.py
-```
-
----
-
-## 4. Test Categories
-1. **Perimeter & Gateway Tests**: Validate that the Security Controller and FastAPI reject unauthenticated or malicious inputs in Secure Mode and correlate telemetry headers.
-2. **Identity & Authentication Tests**: Validate PBKDF2 password verification, MFA challenge issuance and one-time verification, session token lifetime, and unauthorized endpoint rejection.
-3. **FinTech Domain Invariants**: Validate customer-to-account isolation, ensuring customers cannot view unauthorized accounts or transactions.
-4. **Context & RAG Tests**: Validate TF-IDF relevance scoring, minimum score filtering, and indirect injection sanitization.
-5. **Agent Goal Invariance Tests**: Validate that the Main Agent anchors the initial goal and detects goal drift.
-6. **Tool Authorization & RBAC Tests**: Validate tool permission checking, risk tiering, and parameter injection prevention.
-7. **Scenario Simulation Tests**: Validate that all 10 OWASP ASI scenarios execute reliably and emit structured security events.
-8. **FinTech Transaction Lifecycle Tests (`test_fintech_transaction_lifecycle.py`)**: Validate the complete 24-step pipeline, deterministic state transitions (`PENDING`, `RISK_CHECK`, `APPROVAL_REQUIRED`, `APPROVED`, `PROCESSING`, `COMPLETED`, `REJECTED`, `CANCELLED`, `FAILED`), human-in-the-loop approval gating, BOLA account isolation, and independent MCP authorization enforcement.
+## Run everything
 
 ```bash
-pytest tests/test_fintech_transaction_lifecycle.py -v
+./start.sh test            # or: python -m pytest -q
+python -m pytest -q tests/lab               # the executable OWASP lab (UI tests are the slow part, ~2 min)
+python -m pytest -q tests/security          # prompt-injection suites
+python -m security_tests owasp              # ten-category status table (vulnerable vs secure)
+python -m security_tests prompt-injection   # prompt-injection engine (see docs/prompt-injection-testing.md)
+python -m lab test                          # same 47 lab tests, printed as a table
 ```
 
+Last full run: **685 passed, 1 skipped, 0 failed (~4 min; the single skip is the ASI05 legitimate-use control experiment inside the trace-order test)** (see `project-status.md` → TEST STATUS for the dated result). Nothing in the suite needs the network; tests
+that talk to Ollama (`tests/test_live_llm_rag.py`) use it when reachable and fall back to the labelled offline path otherwise.
+
+## What is tested, by layer
+
+| Layer | Files | What is proved |
+|---|---|---|
+| **OWASP lab scenarios** | `tests/lab/test_lab_scenarios.py` | For all 47 variants: attack **succeeds** when vulnerable (ledger/sink/state change) and is **stopped by a named control** when secure; trace starts with `ATTACK_INPUT`, contains a blocking step and audit records; secure mode never moves funds to the attacker; runs are deterministic; unknown inputs rejected |
+| **ASI05 safety** | `tests/lab/test_lab_sandbox.py` | Sandbox allows legitimate analysis, rejects calls/attributes/lambdas/comprehensions/strings/names, enforces size/step/resource limits and path rules; **all ASI05 attacks run with `os.system`, `subprocess`, `eval`, `exec` replaced by functions that fail the test if called**; virtual host is isolated |
+| **Agent bus (ASI07)** | `tests/lab/test_lab_bus.py` | Valid delivery; spoofed sender, tampering, replay, authorisation matrix, unknown receiver/intent/schema rejected; vulnerable bus delivers forgeries; agents have distinct capability manifests |
+| **Controls** | `tests/lab/test_lab_controls.py` | GoalGuard, rate limiter, identity signature, circuit breaker, supervisor kill switch, deterministic risk, gateway (unknown tool, forged authority args, invalid amounts, ownership, **AI cannot approve**, human approval executes through MCP, every decision audited) |
+| **Supply chain / memory / approval / reports** | `tests/lab/test_lab_supply_memory_approval.py` | Admission decisions and findings per component; memory validation, quarantine, isolation; approval packet built from evidence, contradictions detected; reports generated from real runs and consistent with the counts; `security_tests/asiNN` packages and official OWASP names |
+| **Lab API** | `tests/lab/test_lab_api.py` | Auth required, mode gate, validation errors (422), `/lab/test` record fields, tool catalogue contains all 20 spec tools, six synthetic identities exist |
+| **Dashboard** | `tests/lab/test_lab_ui.py` | Streamlit `AppTest`: every page renders without exception; each of the ten OWASP pages launches a live test and renders the result; an admin approves through the Approvals page and the transfer executes; a customer has no decision buttons |
+| **Docs sync** | `tests/lab/test_docs_sync.py` | Every lab test id is documented; required docs exist; `project-status.md` has the required sections; no wrong-taxonomy labels |
+| **Chat engine** | `tests/test_conversation_engine.py`, `tests/test_chat_streaming_history.py` | Tool grounding, RAG in the prompt, numeric grounding; real chunked streaming for tool-free turns; chat memory (validated, poisoned rejected, per-user isolation, vulnerable mode); history store; tool-call JSON scrubbing; **one shared ledger** across chat/API/dashboard/lifecycle and a completed transfer visible everywhere |
+| **Human approval** | `tests/test_human_approval_workflow.py`, `tests/test_approvals_api.py` | AI/orchestrator/requesting customer cannot approve; authorised staff completes exactly once; rejection keeps funds; tampered or expired requests refused; a risk BLOCK cannot be approved; API identity comes from the session; compliance is read-only |
+| **Prompt-injection suites** | `tests/security/*`, `security_tests/` | 33 injection cases (direct, RAG, tool/MCP, exfiltration canaries) for ASI01–05/07 with zero canary leaks; ASI06/08/09/10 assert lab coverage |
+| **Platform** | remaining `tests/test_*.py` | Auth/MFA, RBAC, ownership, risk engine, approval engine, MCP gateway, RAG + vector store, guardrails, orchestrator, observability, hardening, login page |
+
+## How lab statuses are computed
+
+`lab/runner.py` runs each variant in vulnerable then secure mode and classifies the pair: **PASS** (attack succeeded, then blocked by a named
+control), **SIMULATED** (same but the effect is emulated — ASI05), **PARTIAL**, **FAIL**. No status is hard-coded; the reports
+(`python -m lab report`) contain the counts derived from the same runs.
+
+## Runtime (non-mocked) checks used during development
+
+Performed against the live stack started by `./start.sh` (real Ollama `llama3.2`, `nomic-embed-text`):
+
+* login + MFA → `/chat`: greeting (LLM), policy question (hybrid retrieval, ~15 s cold), balance (deterministic), `Remember that …`
+  (memory service) and later recall by the LLM, perimeter block of an injection, cross-account block, ₹50k gate;
+* `/chat` transfer of 25 → balance card 5,420.50 → 5,395.50; transfer of 11,000 → approval queued; customer approve → 403; support
+  approve → completed; `ACC-1002` = 1,875.00;
+* `/lab/run`, `/lab/test`, `/lab/report`; `python -m lab test ASI01 --llm` and `ASI06 --llm` with the real model deciding
+  (ASI01: 3 PASS / 2 PARTIAL because the model ignored two injections in that run; ASI06: 4 PASS).
+
+## Known test limitations
+
+* LLM-in-the-loop runs (`--llm`) are non-deterministic by nature and are not part of the automated suite.
+* The Streamlit tests use `AppTest` (no real browser); layout/CSS is not verified.
+* There is no load/performance testing and no external penetration test.
